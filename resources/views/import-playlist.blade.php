@@ -32,8 +32,18 @@
                             <x-filament::button size="sm" wire:click="loadPlaylists('{{ $source['key'] }}')">
                                 Load my playlists
                             </x-filament::button>
+                            <x-filament::button size="sm" color="gray" wire:click="disconnectSource('{{ $source['key'] }}')">
+                                Disconnect
+                            </x-filament::button>
                         @elseif ($source['configured'])
-                            <x-filament::button size="sm" wire:click="connectSource('{{ $source['key'] }}')">
+                            {{-- A real link (not a scripted popup) so the browser
+                                 does not block the new tab. --}}
+                            <x-filament::button
+                                tag="a"
+                                size="sm"
+                                target="_blank"
+                                href="{{ route('playlist-porter.oauth.start', ['source' => $source['key']]) }}"
+                            >
                                 Connect {{ $source['name'] }}
                             </x-filament::button>
                         @endif

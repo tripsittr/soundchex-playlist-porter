@@ -12,16 +12,38 @@ use Illuminate\Support\Facades\URL;
 use SoundChex\PlaylistPorter\Services\Sources\PlaylistSourceRegistry;
 
 /**
- * Completes a streaming-service OAuth connection from the browser redirect
- * (S-312).
+ * The browser side of a streaming-service OAuth connection (S-312).
  *
- * The service sends the user's browser here with `?code=…&state=…`; we verify the
- * state we issued, exchange the code for tokens, and bounce back to the Import
- * Playlist page with a status the page can show.
+ * `start` sends the signed-in admin off to the service's consent page — a real
+ * navigation from a link the user clicked, so the browser does not block it the
+ * way it blocks a scripted `window.open` after a Livewire round-trip. The service
+ * then returns to `callback` with a code, which is exchanged for tokens; the user
+ * is bounced back to the Import Playlist page either way.
  */
 class OAuthCallbackController extends Controller
 {
-    public function __invoke(Request $request, string $source, PlaylistSourceRegistry $registry): mixed
+    /**
+     * Begin the connection: mint a state tied to this user and redirect the
+     * browser to the service's authorisation page.
+     */
+    public function start(string $source, PlaylistSourceRegistry $registry): mixed
+    {
+        $connector = $registry->get($source);
+        $back = URL::to('/admin/import-playlist');
+
+        if ($connector === null || ! $connector->isConfigured()) {
+            return redirect($back.'?connected=0');
+        }
+
+        $state = \Illuminate\Support\Str::random(40);
+        cache()->put("playlist-oauth:{$state}", Auth::id(), now()->addMinutes(15));
+
+        $redirect = URL::route('playlist-porter.oauth.callback', ['source' => $source]);
+
+        return redirect()->away($connector->authorizationUrl($redirect, $state));
+    }
+
+    public function callback(Request $request, string $source, PlaylistSourceRegistry $registry): mixed
     {
         $connector = $registry->get($source);
         $back = URL::to('/admin/import-playlist');

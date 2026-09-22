@@ -253,32 +253,20 @@ class ImportPlaylist extends Page
 
     /**
      * Begin connecting a service: opens the service's consent page in a new tab.
-     * The service returns to a callback route this same page handles.
+     * The service returns to the callback route the page handles.
+     *
+     * Connecting is a plain link to the `oauth start` route (see the Blade), not a
+     * Livewire action — a scripted `window.open` after a server round-trip is
+     * blocked by the browser as a non-user-initiated popup, which is why the
+     * old button did nothing. Disconnecting stays here.
      */
-    public function connectSource(string $key): void
+    public function disconnectSource(string $key): void
     {
         $source = app(PlaylistSourceRegistry::class)->get($key);
+        $source?->disconnect();
+        $this->servicePlaylists = [];
 
-        if ($source === null || ! $source->isConfigured()) {
-            Notification::make()
-                ->title(($source?->name() ?? 'That service').' is not set up on this server')
-                ->body('Add its app credentials under Integrations first.')
-                ->warning()
-                ->send();
-
-            return;
-        }
-
-        $state = \Illuminate\Support\Str::random(40);
-        cache()->put("playlist-oauth:{$state}", Auth::id(), now()->addMinutes(15));
-
-        $redirect = URL::route('playlist-porter.oauth.callback', ['source' => $key]);
-        $this->js('window.open('.json_encode($source->authorizationUrl($redirect, $state)).', "_blank")');
-
-        Notification::make()
-            ->title('Authorise '.$source->name().' in the new tab')
-            ->body('When it returns, come back here and press “Load my playlists”.')
-            ->send();
+        Notification::make()->title(($source?->name() ?? 'Service').' disconnected')->success()->send();
     }
 
     /**

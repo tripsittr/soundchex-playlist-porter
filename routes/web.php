@@ -14,5 +14,8 @@ use SoundChex\PlaylistPorter\Http\OAuthCallbackController;
  * exchange and sends them back to the Import Playlist admin page. Session-guarded
  * like the rest of the admin, so the returning user is the one who started it.
  */
-Route::get('/playlist-porter/oauth/{source}/callback', OAuthCallbackController::class)
+Route::get('/playlist-porter/oauth/{source}/start', [OAuthCallbackController::class, 'start'])
+    ->name('playlist-porter.oauth.start');
+
+Route::get('/playlist-porter/oauth/{source}/callback', [OAuthCallbackController::class, 'callback'])
     ->name('playlist-porter.oauth.callback');
