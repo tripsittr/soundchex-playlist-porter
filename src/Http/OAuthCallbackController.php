@@ -9,6 +9,7 @@ use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\URL;
+use SoundChex\PlaylistPorter\Services\OAuthRedirect;
 use SoundChex\PlaylistPorter\Services\Sources\PlaylistSourceRegistry;
 
 /**
@@ -26,7 +27,7 @@ class OAuthCallbackController extends Controller
      * Begin the connection: mint a state tied to this user and redirect the
      * browser to the service's authorisation page.
      */
-    public function start(string $source, PlaylistSourceRegistry $registry): mixed
+    public function start(string $source, PlaylistSourceRegistry $registry, OAuthRedirect $redirects): mixed
     {
         $connector = $registry->get($source);
         $back = URL::to('/admin/import-playlist');
@@ -38,13 +39,17 @@ class OAuthCallbackController extends Controller
         $state = \Illuminate\Support\Str::random(40);
         cache()->put("playlist-oauth:{$state}", Auth::id(), now()->addMinutes(15));
 
-        $redirect = URL::route('playlist-porter.oauth.callback', ['source' => $source]);
-
-        return redirect()->away($connector->authorizationUrl($redirect, $state));
+        return redirect()->away(
+            $connector->authorizationUrl($redirects->for($source), $state),
+        );
     }
 
-    public function callback(Request $request, string $source, PlaylistSourceRegistry $registry): mixed
-    {
+    public function callback(
+        Request $request,
+        string $source,
+        PlaylistSourceRegistry $registry,
+        OAuthRedirect $redirects,
+    ): mixed {
         $connector = $registry->get($source);
         $back = URL::to('/admin/import-playlist');
 
@@ -61,8 +66,8 @@ class OAuthCallbackController extends Controller
         }
 
         try {
-            $redirect = URL::route('playlist-porter.oauth.callback', ['source' => $source]);
-            $connector->connect($code, $redirect);
+            // The token exchange must repeat the exact URI used to authorise.
+            $connector->connect($code, $redirects->for($source));
         } catch (\Throwable $e) {
             report($e);
 

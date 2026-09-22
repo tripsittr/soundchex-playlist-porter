@@ -50,6 +50,42 @@
                     </div>
                 </div>
 
+                {{-- The redirect URI is shown whether or not credentials are saved:
+                     a mismatch here is the usual cause of Spotify's
+                     "redirect_uri: Not matching configuration" (S-322), and it
+                     needs to be re-checkable after setup. --}}
+                @if ($source['key'] === 'spotify')
+                    <div class="space-y-3 rounded-lg border border-gray-200 p-4 dark:border-white/10">
+                        <div class="space-y-1.5">
+                            <label class="text-sm font-medium text-gray-950 dark:text-white">Redirect URI to add in Spotify</label>
+                            <code class="block w-full overflow-x-auto rounded-md bg-gray-100 px-3 py-2 text-xs text-gray-800 dark:bg-white/10 dark:text-gray-200">{{ $this->spotifyRedirectUri() }}</code>
+                            <p class="text-xs text-gray-600 dark:text-gray-400">
+                                Paste this into your Spotify app's <span class="font-medium">Redirect URIs</span> exactly as shown, then save it there.
+                                Spotify rejects any difference, including the port and a trailing slash.
+                            </p>
+                        </div>
+
+                        <details class="text-sm">
+                            <summary class="cursor-pointer text-gray-600 hover:underline dark:text-gray-400">
+                                This server answers on more than one address — change the one used here
+                            </summary>
+                            <form wire:submit="saveOauthBaseUrl" class="mt-3 space-y-2">
+                                <p class="text-xs text-gray-600 dark:text-gray-400">
+                                    The address Spotify should send you back to. It must be one this browser can reach.
+                                    Leave it empty to use the server's own address ({{ $this->oauthBaseUrlDefault() }}).
+                                </p>
+                                <div class="flex flex-wrap items-start gap-2">
+                                    <x-filament::input.wrapper class="grow">
+                                        <x-filament::input type="url" wire:model="oauthBaseUrl" placeholder="{{ $this->oauthBaseUrlDefault() }}" />
+                                    </x-filament::input.wrapper>
+                                    <x-filament::button type="submit" size="sm" color="gray">Save</x-filament::button>
+                                </div>
+                                @error('oauthBaseUrl') <p class="text-xs text-danger-600">{{ $message }}</p> @enderror
+                            </form>
+                        </details>
+                    </div>
+                @endif
+
                 {{-- First-time setup for Spotify: the app credentials the operator
                      registers once at developer.spotify.com. --}}
                 @if ($source['key'] === 'spotify' && ! $source['configured'])
@@ -61,11 +97,6 @@
                                 <a href="https://developer.spotify.com/dashboard" target="_blank" class="text-primary-600 hover:underline">developer.spotify.com/dashboard</a>,
                                 add the redirect URI below to it, then paste its Client ID and Client Secret here.
                             </p>
-                        </div>
-
-                        <div class="space-y-1.5">
-                            <label class="text-sm font-medium text-gray-950 dark:text-white">Redirect URI to add in Spotify</label>
-                            <code class="block w-full overflow-x-auto rounded-md bg-gray-100 px-3 py-2 text-xs text-gray-800 dark:bg-white/10 dark:text-gray-200">{{ $this->spotifyRedirectUri() }}</code>
                         </div>
 
                         <form wire:submit="saveSpotifyCredentials" class="space-y-3">

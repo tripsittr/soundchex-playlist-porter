@@ -13,9 +13,9 @@ use Filament\Notifications\Notification;
 use Filament\Pages\Page;
 use Filament\Support\Icons\Heroicon;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\URL;
 use Livewire\Features\SupportFileUploads\WithFileUploads;
 use SoundChex\PlaylistPorter\Models\PlaylistImport;
+use SoundChex\PlaylistPorter\Services\OAuthRedirect;
 use SoundChex\PlaylistPorter\Services\PlaylistImportService;
 use SoundChex\PlaylistPorter\Services\Sources\PlaylistSourceRegistry;
 use UnitEnum;
@@ -199,14 +199,61 @@ class ImportPlaylist extends Page
 
     public string $spotifyClientSecret = '';
 
+    /** The operator's override for the OAuth base URL, for the setup form. */
+    public string $oauthBaseUrl = '';
+
+    /**
+     * Show the override that is actually in force, rather than an empty box
+     * beside a placeholder, so the field states where Spotify is being sent.
+     */
+    public function mount(): void
+    {
+        $this->oauthBaseUrl = (string) app(SettingsService::class)
+            ->get(OAuthRedirect::BASE_SETTING, '');
+    }
+
     /**
      * The redirect URI to register in the Spotify app — the browser callback the
-     * service returns to. Shown on the setup form so it can be copied exactly;
-     * Spotify rejects a mismatch.
+     * service returns to. Shown so it can be copied exactly; Spotify rejects a
+     * mismatch. This is the same value the connect flow actually sends (S-322),
+     * so what is displayed is always what is used.
      */
     public function spotifyRedirectUri(): string
     {
-        return URL::route('playlist-porter.oauth.callback', ['source' => 'spotify']);
+        return app(OAuthRedirect::class)->for('spotify');
+    }
+
+    /** The server's own configured address, used when no override is set. */
+    public function oauthBaseUrlDefault(): string
+    {
+        return app(OAuthRedirect::class)->defaultBaseUrl();
+    }
+
+    /**
+     * Pin the base URL the services return to. Needed when the browser reaches
+     * this server by one address but the registered redirect URI is another —
+     * this server answers on a tailnet host, a public Funnel host and loopback
+     * at once, and only one of those can be registered.
+     *
+     * Emptying the field clears the override and falls back to `APP_URL`;
+     * without that there would be no way back to the default once one is set.
+     */
+    public function saveOauthBaseUrl(): void
+    {
+        $this->validate([
+            'oauthBaseUrl' => ['nullable', 'url:http,https', 'max:255'],
+        ]);
+
+        $base = rtrim(trim($this->oauthBaseUrl), '/');
+
+        app(SettingsService::class)->set(OAuthRedirect::BASE_SETTING, $base);
+        $this->oauthBaseUrl = $base;
+
+        Notification::make()
+            ->title($base === '' ? 'Using the server address' : 'Redirect URI updated')
+            ->body('Register this exact URI in your Spotify app: '.$this->spotifyRedirectUri())
+            ->success()
+            ->send();
     }
 
     /**
