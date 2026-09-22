@@ -221,6 +221,45 @@
                 </x-slot>
             @endif
 
+            {{-- Attached, but something disagreed: the library plainly holds the
+                 song, while the release or the length is not the one the playlist
+                 named. Worth a glance, not worth losing the track over (S-324). --}}
+            @php($uncertain = $import->uncertain ?? [])
+            @if (count($uncertain) > 0)
+                <div class="mb-6 space-y-4">
+                    <p class="text-sm text-gray-600 dark:text-gray-400">
+                        {{ count($uncertain) }} track{{ count($uncertain) === 1 ? ' was' : 's were' }} added from a
+                        different release or a different length. Keep the ones that look right.
+                    </p>
+
+                    <ul class="divide-y divide-gray-100 dark:divide-white/10">
+                        @foreach ($uncertain as $index => $track)
+                            <li class="flex flex-col gap-3 py-4 sm:flex-row sm:items-center sm:justify-between" wire:key="uncertain-{{ $index }}">
+                                <div class="min-w-0">
+                                    <p class="truncate text-sm font-medium text-gray-950 dark:text-white">
+                                        {{ $track['title'] ?? 'Unknown track' }}
+                                        @if (! empty($track['artist']))
+                                            <span class="font-normal text-gray-500 dark:text-gray-400">— {{ $track['artist'] }}</span>
+                                        @endif
+                                    </p>
+                                    <p class="truncate text-xs text-gray-500 dark:text-gray-400">
+                                        {{ $track['reason'] ?? '' }}
+                                    </p>
+                                </div>
+                                <div class="flex shrink-0 items-center gap-2">
+                                    <x-filament::button size="sm" color="gray" wire:click="confirmUncertain({{ $index }})">
+                                        Keep
+                                    </x-filament::button>
+                                    <x-filament::button size="sm" color="danger" wire:click="rejectUncertain({{ $index }})">
+                                        Remove
+                                    </x-filament::button>
+                                </div>
+                            </li>
+                        @endforeach
+                    </ul>
+                </div>
+            @endif
+
             @php($unmatched = $import->unmatched ?? [])
             @if (count($unmatched) > 0)
                 <div class="space-y-4">
@@ -242,11 +281,28 @@
                                         </p>
                                     @endif
                                 </div>
-                                <div class="flex items-center gap-2">
-                                    <x-filament::input.wrapper class="w-48">
-                                        <x-filament::input type="text" wire:model="resolveTo.{{ $index }}" placeholder="Library track id" />
-                                    </x-filament::input.wrapper>
-                                    <x-filament::button size="sm" color="gray" wire:click="resolve({{ $index }})">Match</x-filament::button>
+                                <div class="flex flex-col items-stretch gap-2 sm:items-end">
+                                    {{-- The matcher's own suggestions first: picking
+                                         one is a click, not a database id. --}}
+                                    @foreach ($track['candidates'] ?? [] as $candidate)
+                                        <x-filament::button
+                                            size="sm"
+                                            color="gray"
+                                            wire:click="acceptCandidate({{ $index }}, {{ $candidate['media_item_id'] }})"
+                                        >
+                                            Use “{{ Str::limit($candidate['title'], 30) }}”
+                                            @if (! empty($candidate['album']))
+                                                <span class="font-normal opacity-70">· {{ Str::limit($candidate['album'], 20) }}</span>
+                                            @endif
+                                        </x-filament::button>
+                                    @endforeach
+
+                                    <div class="flex items-center gap-2">
+                                        <x-filament::input.wrapper class="w-40">
+                                            <x-filament::input type="text" wire:model="resolveTo.{{ $index }}" placeholder="Library track id" />
+                                        </x-filament::input.wrapper>
+                                        <x-filament::button size="sm" color="gray" wire:click="resolve({{ $index }})">Match</x-filament::button>
+                                    </div>
                                 </div>
                             </li>
                         @endforeach

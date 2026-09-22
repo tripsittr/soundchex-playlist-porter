@@ -32,12 +32,14 @@ class PlaylistImport extends Model
         'total_tracks',
         'matched_tracks',
         'unmatched',
+        'uncertain',
         'collection_id',
         'error',
     ];
 
     protected $casts = [
         'unmatched' => 'array',
+        'uncertain' => 'array',
         'total_tracks' => 'integer',
         'matched_tracks' => 'integer',
     ];
