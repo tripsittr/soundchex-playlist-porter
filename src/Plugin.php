@@ -48,6 +48,11 @@ class Plugin implements SoundChexPlugin
         // carries SubstituteBindings, which resolves route-model params like
         // {import} — without it every bound route (show, resolve) 404s.
         $registry->routes(__DIR__.'/../routes/api.php', prefix: 'api/v1', middleware: ['api', 'auth:sanctum']);
+
+        // The browser-facing OAuth return for streaming-service connections
+        // (S-312), under the `web` group so the returning user's session is
+        // authenticated — the service redirects the browser here.
+        $registry->routes(__DIR__.'/../routes/web.php', middleware: ['web']);
     }
 
     public function boot(Registry $registry): void

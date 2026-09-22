@@ -7,14 +7,17 @@ namespace SoundChex\PlaylistPorter\Filament;
 
 use App\Filament\Concerns\RestrictsToServerAdmins;
 use App\Models\MediaItem;
+use App\Services\SettingsService;
 use BackedEnum;
 use Filament\Notifications\Notification;
 use Filament\Pages\Page;
 use Filament\Support\Icons\Heroicon;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\URL;
 use Livewire\Features\SupportFileUploads\WithFileUploads;
 use SoundChex\PlaylistPorter\Models\PlaylistImport;
 use SoundChex\PlaylistPorter\Services\PlaylistImportService;
+use SoundChex\PlaylistPorter\Services\Sources\PlaylistSourceRegistry;
 use UnitEnum;
 
 /**
@@ -184,5 +187,131 @@ class ImportPlaylist extends Page
         $import = PlaylistImport::find($this->importId);
 
         return $import !== null && $import->user_id === Auth::id() ? $import : null;
+    }
+
+    // MARK: - Streaming services (Spotify, …) — S-312
+
+    /** The service's playlists once connected, for the picker. */
+    public array $servicePlaylists = [];
+
+    /**
+     * The available streaming services and their state, for the "Connect a
+     * service" section. Each: key, name, configured (operator set credentials),
+     * connected (this user authorised it).
+     *
+     * @return array<int, array{key: string, name: string, configured: bool, connected: bool}>
+     */
+    public function sources(): array
+    {
+        return array_map(fn ($s): array => [
+            'key' => $s->key(),
+            'name' => $s->name(),
+            'configured' => $s->isConfigured(),
+            'connected' => $s->isConnected(),
+        ], app(PlaylistSourceRegistry::class)->all());
+    }
+
+    /**
+     * Begin connecting a service: opens the service's consent page in a new tab.
+     * The service returns to a callback route this same page handles.
+     */
+    public function connectSource(string $key): void
+    {
+        $source = app(PlaylistSourceRegistry::class)->get($key);
+
+        if ($source === null || ! $source->isConfigured()) {
+            Notification::make()
+                ->title(($source?->name() ?? 'That service').' is not set up on this server')
+                ->body('Add its app credentials under Integrations first.')
+                ->warning()
+                ->send();
+
+            return;
+        }
+
+        $state = \Illuminate\Support\Str::random(40);
+        cache()->put("playlist-oauth:{$state}", Auth::id(), now()->addMinutes(15));
+
+        $redirect = URL::route('playlist-porter.oauth.callback', ['source' => $key]);
+        $this->js('window.open('.json_encode($source->authorizationUrl($redirect, $state)).', "_blank")');
+
+        Notification::make()
+            ->title('Authorise '.$source->name().' in the new tab')
+            ->body('When it returns, come back here and press “Load my playlists”.')
+            ->send();
+    }
+
+    /**
+     * Fetch the connected user's playlists on a service, for them to pick one.
+     */
+    public function loadPlaylists(string $key): void
+    {
+        $source = app(PlaylistSourceRegistry::class)->get($key);
+
+        if ($source === null || ! $source->isConnected()) {
+            Notification::make()->title('Connect '.($source?->name() ?? 'the service').' first.')->warning()->send();
+
+            return;
+        }
+
+        try {
+            $this->servicePlaylists = $source->playlists();
+        } catch (\Throwable $e) {
+            Notification::make()->title('Could not read your playlists.')->body($e->getMessage())->danger()->send();
+
+            return;
+        }
+
+        if ($this->servicePlaylists === []) {
+            Notification::make()->title('No playlists found on '.$source->name().'.')->send();
+        }
+    }
+
+    /**
+     * Import one of a service's playlists into the library.
+     */
+    public function importFromSource(string $key, string $playlistId, PlaylistImportService $service): void
+    {
+        $source = app(PlaylistSourceRegistry::class)->get($key);
+
+        if ($source === null || ! $source->isConnected()) {
+            return;
+        }
+
+        try {
+            $fetched = $source->fetch($playlistId);
+        } catch (\Throwable $e) {
+            Notification::make()->title('Could not read that playlist.')->body($e->getMessage())->danger()->send();
+
+            return;
+        }
+
+        if ($fetched['tracks'] === []) {
+            Notification::make()->title('That playlist has no tracks.')->warning()->send();
+
+            return;
+        }
+
+        $import = PlaylistImport::create([
+            'user_id' => Auth::id(),
+            'source' => $source->key(),
+            'source_format' => $source->key(),
+            'name' => $fetched['name'],
+            'status' => PlaylistImport::STATUS_PENDING,
+            'total_tracks' => count($fetched['tracks']),
+        ]);
+
+        $service->run($import, $fetched['tracks'], $fetched['name']);
+
+        $this->importId = $import->id;
+        $this->resolveTo = [];
+        $this->servicePlaylists = [];
+
+        $fresh = $import->fresh();
+        Notification::make()
+            ->title("Imported \"{$fresh->name}\"")
+            ->body("{$fresh->matched_tracks} of {$fresh->total_tracks} tracks matched your library.")
+            ->success()
+            ->send();
     }
 }
