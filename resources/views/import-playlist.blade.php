@@ -50,7 +50,6 @@
                     </div>
                 </div>
 
-
                 {{-- The redirect URI is shown whether or not credentials are saved:
                      a mismatch here is the usual cause of Spotify's
                      "redirect_uri: Not matching configuration" (S-322), and it
@@ -73,6 +72,7 @@
                             <form wire:submit="saveOauthBaseUrl" class="mt-3 space-y-2">
                                 <p class="text-xs text-gray-600 dark:text-gray-400">
                                     The address Spotify should send you back to. It must be one this browser can reach.
+                                    Leave it empty to use the server's own address ({{ $this->oauthBaseUrlDefault() }}).
                                 </p>
                                 <div class="flex flex-wrap items-start gap-2">
                                     <x-filament::input.wrapper class="grow">

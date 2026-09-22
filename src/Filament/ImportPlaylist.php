@@ -203,6 +203,16 @@ class ImportPlaylist extends Page
     public string $oauthBaseUrl = '';
 
     /**
+     * Show the override that is actually in force, rather than an empty box
+     * beside a placeholder, so the field states where Spotify is being sent.
+     */
+    public function mount(): void
+    {
+        $this->oauthBaseUrl = (string) app(SettingsService::class)
+            ->get(OAuthRedirect::BASE_SETTING, '');
+    }
+
+    /**
      * The redirect URI to register in the Spotify app — the browser callback the
      * service returns to. Shown so it can be copied exactly; Spotify rejects a
      * mismatch. This is the same value the connect flow actually sends (S-322),
@@ -213,10 +223,10 @@ class ImportPlaylist extends Page
         return app(OAuthRedirect::class)->for('spotify');
     }
 
-    /** The base URL currently in effect, shown as the field's placeholder. */
+    /** The server's own configured address, used when no override is set. */
     public function oauthBaseUrlDefault(): string
     {
-        return app(OAuthRedirect::class)->baseUrl();
+        return app(OAuthRedirect::class)->defaultBaseUrl();
     }
 
     /**
@@ -224,21 +234,24 @@ class ImportPlaylist extends Page
      * this server by one address but the registered redirect URI is another —
      * this server answers on a tailnet host, a public Funnel host and loopback
      * at once, and only one of those can be registered.
+     *
+     * Emptying the field clears the override and falls back to `APP_URL`;
+     * without that there would be no way back to the default once one is set.
      */
     public function saveOauthBaseUrl(): void
     {
         $this->validate([
-            'oauthBaseUrl' => ['required', 'url:http,https', 'max:255'],
+            'oauthBaseUrl' => ['nullable', 'url:http,https', 'max:255'],
         ]);
 
-        app(SettingsService::class)->set(
-            OAuthRedirect::BASE_SETTING,
-            rtrim(trim($this->oauthBaseUrl), '/'),
-        );
+        $base = rtrim(trim($this->oauthBaseUrl), '/');
+
+        app(SettingsService::class)->set(OAuthRedirect::BASE_SETTING, $base);
+        $this->oauthBaseUrl = $base;
 
         Notification::make()
-            ->title('Redirect URI updated')
-            ->body('Make sure this exact URI is registered in your Spotify app.')
+            ->title($base === '' ? 'Using the server address' : 'Redirect URI updated')
+            ->body('Register this exact URI in your Spotify app: '.$this->spotifyRedirectUri())
             ->success()
             ->send();
     }

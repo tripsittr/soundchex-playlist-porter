@@ -71,6 +71,15 @@ class OAuthRedirect
             return rtrim($configured, '/');
         }
 
+        return $this->defaultBaseUrl();
+    }
+
+    /**
+     * The server's own configured address, ignoring any override — what the
+     * redirect URI falls back to, and what the settings form offers.
+     */
+    public function defaultBaseUrl(): string
+    {
         $appUrl = config(SetAppUrl::CONFIGURED_URL) ?? config('app.url');
 
         return rtrim((string) $appUrl, '/');
