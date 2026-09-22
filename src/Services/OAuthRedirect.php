@@ -5,6 +5,7 @@
 
 namespace SoundChex\PlaylistPorter\Services;
 
+use App\Http\Middleware\SetAppUrl;
 use App\Services\SettingsService;
 use Illuminate\Support\Facades\URL;
 
@@ -51,11 +52,16 @@ class OAuthRedirect
     }
 
     /**
-     * The configured base, or `APP_URL`. Read from the environment rather than
-     * `config('app.url')`, because `SetAppUrl` overwrites that config value with
-     * the current request's host on every web request — the very drift this
-     * class exists to avoid. Trailing slashes are trimmed so the joined URI
-     * never doubles one; the services compare exact strings.
+     * The operator's override, else the server's configured `APP_URL`.
+     *
+     * Not `config('app.url')`: `SetAppUrl` overwrites that on every web request
+     * with the address the request arrived on, which is the drift this class
+     * exists to prevent. It stashes the configured value under
+     * `app.configured_url` first, which is what is read here — and unlike
+     * `env()`, that still holds once the config is cached.
+     *
+     * Trailing slashes are trimmed so the joined URI never doubles one; the
+     * services compare exact strings.
      */
     public function baseUrl(): string
     {
@@ -65,6 +71,8 @@ class OAuthRedirect
             return rtrim($configured, '/');
         }
 
-        return rtrim((string) env('APP_URL', config('app.url')), '/');
+        $appUrl = config(SetAppUrl::CONFIGURED_URL) ?? config('app.url');
+
+        return rtrim((string) $appUrl, '/');
     }
 }

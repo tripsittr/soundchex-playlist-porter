@@ -67,6 +67,22 @@ class OAuthRedirectTest extends TestCase
         $this->assertSame($expected, app(OAuthRedirect::class)->for('spotify'));
     }
 
+    public function test_it_survives_set_app_url_running_first(): void
+    {
+        // Exactly what happens on a real request: the middleware stashes the
+        // configured URL, then rebases app.url onto the request's own host.
+        $middleware = new \App\Http\Middleware\SetAppUrl;
+        $request = \Illuminate\Http\Request::create('http://127.0.0.1:8000/admin/import-playlist');
+        $middleware->handle($request, fn () => new \Illuminate\Http\Response);
+
+        $this->assertSame(
+            rtrim((string) config(\App\Http\Middleware\SetAppUrl::CONFIGURED_URL), '/')
+                .'/playlist-porter/oauth/spotify/callback',
+            app(OAuthRedirect::class)->for('spotify'),
+        );
+        $this->assertStringNotContainsString('127.0.0.1', app(OAuthRedirect::class)->for('spotify'));
+    }
+
     public function test_operator_can_pin_the_base_url(): void
     {
         app(SettingsService::class)->set(OAuthRedirect::BASE_SETTING, 'https://music.example.com/');
