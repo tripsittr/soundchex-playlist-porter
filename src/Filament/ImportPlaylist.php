@@ -194,6 +194,46 @@ class ImportPlaylist extends Page
     /** The service's playlists once connected, for the picker. */
     public array $servicePlaylists = [];
 
+    /** The Spotify app credentials being entered, for the setup form. */
+    public string $spotifyClientId = '';
+
+    public string $spotifyClientSecret = '';
+
+    /**
+     * The redirect URI to register in the Spotify app — the browser callback the
+     * service returns to. Shown on the setup form so it can be copied exactly;
+     * Spotify rejects a mismatch.
+     */
+    public function spotifyRedirectUri(): string
+    {
+        return URL::route('playlist-porter.oauth.callback', ['source' => 'spotify']);
+    }
+
+    /**
+     * Save the operator's Spotify app credentials, so users can connect. The
+     * secret is stored encrypted. These are the same keys SpotifySource reads.
+     */
+    public function saveSpotifyCredentials(): void
+    {
+        $this->validate([
+            'spotifyClientId' => ['required', 'string', 'max:255'],
+            'spotifyClientSecret' => ['required', 'string', 'max:255'],
+        ]);
+
+        $settings = app(SettingsService::class);
+        $settings->set('spotify.client_id', trim($this->spotifyClientId));
+        $settings->set('spotify.client_secret', trim($this->spotifyClientSecret), encrypt: true);
+
+        $this->spotifyClientId = '';
+        $this->spotifyClientSecret = '';
+
+        Notification::make()
+            ->title('Spotify is set up')
+            ->body('You can now connect your Spotify account and import playlists.')
+            ->success()
+            ->send();
+    }
+
     /**
      * The available streaming services and their state, for the "Connect a
      * service" section. Each: key, name, configured (operator set credentials),

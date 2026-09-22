@@ -28,21 +28,57 @@
                     </div>
 
                     <div class="flex flex-wrap items-center gap-2">
-                        @if (! $source['configured'])
-                            <span class="text-xs text-gray-500 dark:text-gray-400">
-                                Add its app credentials under Integrations first.
-                            </span>
-                        @elseif ($source['connected'])
+                        @if ($source['configured'] && $source['connected'])
                             <x-filament::button size="sm" wire:click="loadPlaylists('{{ $source['key'] }}')">
                                 Load my playlists
                             </x-filament::button>
-                        @else
+                        @elseif ($source['configured'])
                             <x-filament::button size="sm" wire:click="connectSource('{{ $source['key'] }}')">
                                 Connect {{ $source['name'] }}
                             </x-filament::button>
                         @endif
                     </div>
                 </div>
+
+                {{-- First-time setup for Spotify: the app credentials the operator
+                     registers once at developer.spotify.com. --}}
+                @if ($source['key'] === 'spotify' && ! $source['configured'])
+                    <div class="space-y-4 rounded-lg border border-dashed border-gray-300 p-4 dark:border-white/15">
+                        <div class="space-y-1">
+                            <p class="text-sm font-medium text-gray-950 dark:text-white">Set up Spotify (one time)</p>
+                            <p class="text-sm text-gray-600 dark:text-gray-400">
+                                Create an app at
+                                <a href="https://developer.spotify.com/dashboard" target="_blank" class="text-primary-600 hover:underline">developer.spotify.com/dashboard</a>,
+                                add the redirect URI below to it, then paste its Client ID and Client Secret here.
+                            </p>
+                        </div>
+
+                        <div class="space-y-1.5">
+                            <label class="text-sm font-medium text-gray-950 dark:text-white">Redirect URI to add in Spotify</label>
+                            <code class="block w-full overflow-x-auto rounded-md bg-gray-100 px-3 py-2 text-xs text-gray-800 dark:bg-white/10 dark:text-gray-200">{{ $this->spotifyRedirectUri() }}</code>
+                        </div>
+
+                        <form wire:submit="saveSpotifyCredentials" class="space-y-3">
+                            <div class="grid gap-3 sm:grid-cols-2">
+                                <div class="space-y-1.5">
+                                    <label class="text-sm font-medium text-gray-950 dark:text-white">Client ID</label>
+                                    <x-filament::input.wrapper>
+                                        <x-filament::input type="text" wire:model="spotifyClientId" placeholder="From your Spotify app" />
+                                    </x-filament::input.wrapper>
+                                    @error('spotifyClientId') <p class="text-xs text-danger-600">{{ $message }}</p> @enderror
+                                </div>
+                                <div class="space-y-1.5">
+                                    <label class="text-sm font-medium text-gray-950 dark:text-white">Client Secret</label>
+                                    <x-filament::input.wrapper>
+                                        <x-filament::input type="password" wire:model="spotifyClientSecret" placeholder="From your Spotify app" />
+                                    </x-filament::input.wrapper>
+                                    @error('spotifyClientSecret') <p class="text-xs text-danger-600">{{ $message }}</p> @enderror
+                                </div>
+                            </div>
+                            <x-filament::button type="submit" size="sm">Save Spotify credentials</x-filament::button>
+                        </form>
+                    </div>
+                @endif
             @endforeach
 
             {{-- The connected service's playlists to pick from --}}
