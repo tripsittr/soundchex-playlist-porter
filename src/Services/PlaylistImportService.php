@@ -84,13 +84,19 @@ class PlaylistImportService
 
             $matched = 0;
             $unmatched = [];
+            $uncertain = [];
             $sortOrder = 0;
 
             foreach ($tracks as $track) {
-                $item = $this->matcher->match($track);
+                $match = $this->matcher->best($track);
 
-                if ($item === null) {
-                    $unmatched[] = $track->toArray();
+                if ($match === null) {
+                    // Nothing was confident enough to attach, but the near
+                    // misses are worth offering rather than making the user
+                    // search from scratch.
+                    $unmatched[] = $track->toArray() + [
+                        'candidates' => $this->candidateData($track),
+                    ];
 
                     continue;
                 }
@@ -99,15 +105,27 @@ class PlaylistImportService
                 // and skipping a track the playlist already holds (a playlist can
                 // list the same song twice; the library item is attached once).
                 $collection->mediaItems()->syncWithoutDetaching([
-                    $item->id => ['sort_order' => $sortOrder++],
+                    $match->item->id => ['sort_order' => $sortOrder++],
                 ]);
                 $matched++;
+
+                // Attached, but the release or the length disagreed. Recorded so
+                // the import page can ask about it without matching again.
+                if ($match->needsReview()) {
+                    $uncertain[] = $track->toArray() + [
+                        'media_item_id' => $match->item->id,
+                        'matched_title' => $match->item->title,
+                        'reason' => $match->reason,
+                        'score' => round($match->score, 2),
+                    ];
+                }
             }
 
             $import->update([
                 'status' => PlaylistImport::STATUS_COMPLETE,
                 'matched_tracks' => $matched,
                 'unmatched' => $unmatched,
+                'uncertain' => $uncertain,
                 'collection_id' => $collection->id,
             ]);
         } catch (\Throwable $e) {
@@ -117,6 +135,25 @@ class PlaylistImportService
                 'error' => $e->getMessage(),
             ]);
         }
+    }
+
+    /**
+     * The library items worth offering for a track nothing matched, best first.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    private function candidateData(ImportedTrack $track): array
+    {
+        return $this->matcher->candidatesFor($track, 3)
+            ->map(fn (TrackMatch $c) => [
+                'media_item_id' => $c->item->id,
+                'title' => $c->item->title,
+                'artist' => $c->item->musicMetadata?->artist,
+                'album' => $c->item->musicMetadata?->album,
+                'reason' => $c->reason,
+                'score' => round($c->score, 2),
+            ])
+            ->all();
     }
 
     private function formatOf(PlaylistFileParser $parser): string

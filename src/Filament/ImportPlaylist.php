@@ -117,6 +117,79 @@ class ImportPlaylist extends Page
      * Resolve one unmatched track by attaching the chosen library item to the
      * playlist and dropping it from the unmatched list.
      */
+    /**
+     * Accept a candidate the matcher offered for an unmatched track — the
+     * one-click path, so the common case is not a search.
+     */
+    public function acceptCandidate(int $index, int $mediaItemId): void
+    {
+        $this->resolveTo[$index] = $mediaItemId;
+
+        $this->resolve($index);
+    }
+
+    /**
+     * Keep an uncertain match: it was already attached, so this only clears the
+     * flag once a person has agreed with it.
+     */
+    public function confirmUncertain(int $index): void
+    {
+        $import = $this->currentImport();
+
+        if ($import === null) {
+            return;
+        }
+
+        $uncertain = $import->uncertain ?? [];
+
+        if (! array_key_exists($index, $uncertain)) {
+            return;
+        }
+
+        unset($uncertain[$index]);
+        $import->update(['uncertain' => array_values($uncertain)]);
+
+        Notification::make()->title('Kept.')->success()->send();
+    }
+
+    /**
+     * Reject an uncertain match: detach the song the matcher guessed at and put
+     * the track back among the unmatched, so it can be resolved by hand.
+     */
+    public function rejectUncertain(int $index): void
+    {
+        $import = $this->currentImport();
+
+        if ($import === null || $import->collection === null) {
+            return;
+        }
+
+        $uncertain = $import->uncertain ?? [];
+
+        if (! array_key_exists($index, $uncertain)) {
+            return;
+        }
+
+        $track = $uncertain[$index];
+        $import->collection->mediaItems()->detach($track['media_item_id'] ?? null);
+
+        unset($uncertain[$index]);
+
+        // Back to the unmatched list, minus the guess that was wrong.
+        $unmatched = $import->unmatched ?? [];
+        $unmatched[] = collect($track)
+            ->except(['media_item_id', 'matched_title', 'reason', 'score'])
+            ->all();
+
+        $import->update([
+            'uncertain' => array_values($uncertain),
+            'unmatched' => $unmatched,
+            'matched_tracks' => max(0, $import->matched_tracks - 1),
+        ]);
+
+        Notification::make()->title('Removed from the playlist.')->success()->send();
+    }
+
     public function resolve(int $index): void
     {
         $import = $this->currentImport();
