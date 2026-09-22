@@ -133,15 +133,29 @@
                                     @if (! empty($pl['track_count']))
                                         <p class="text-xs text-gray-500 dark:text-gray-400">{{ $pl['track_count'] }} tracks</p>
                                     @endif
+                                    {{-- A development-mode Spotify app may only read
+                                         playlists the connected account created, so
+                                         say so here rather than after a failed click. --}}
+                                    @if (isset($pl['readable']) && ! $pl['readable'])
+                                        <p class="text-xs text-gray-500 dark:text-gray-400">
+                                            Made by someone else — Spotify will not let this app read it.
+                                        </p>
+                                    @endif
                                 </div>
-                                <x-filament::button
-                                    size="sm"
-                                    color="gray"
-                                    wire:click="importFromSource('spotify', '{{ $pl['id'] }}')"
-                                    wire:loading.attr="disabled"
-                                >
-                                    Import
-                                </x-filament::button>
+                                @if (isset($pl['readable']) && ! $pl['readable'])
+                                    <x-filament::button size="sm" color="gray" disabled>
+                                        Import
+                                    </x-filament::button>
+                                @else
+                                    <x-filament::button
+                                        size="sm"
+                                        color="gray"
+                                        wire:click="importFromSource('spotify', '{{ $pl['id'] }}')"
+                                        wire:loading.attr="disabled"
+                                    >
+                                        Import
+                                    </x-filament::button>
+                                @endif
                             </li>
                         @endforeach
                     </ul>

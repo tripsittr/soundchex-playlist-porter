@@ -83,16 +83,19 @@ class SpotifyImportTest extends TestCase
 
         Http::fake([
             'api.spotify.com/v1/playlists/PL1?*' => Http::response(['name' => 'My Spotify Mix']),
-            'api.spotify.com/v1/playlists/PL1/tracks*' => Http::response([
+            // `/items` with the payload under `item`: the live shape. `/tracks`
+            // answers 403 for a development-mode app (S-323), so faking the old
+            // endpoint here would keep passing while real imports failed.
+            'api.spotify.com/v1/playlists/PL1/items*' => Http::response([
                 'next' => null,
                 'items' => [
-                    ['track' => [
+                    ['item' => [
                         'name' => 'Different Spotify Title', 'duration_ms' => 200000,
                         'external_ids' => ['isrc' => 'GBUM71029604'],
                         'id' => 'spid1', 'artists' => [['name' => 'Some Artist']],
                         'album' => ['name' => 'An Album'],
                     ]],
-                    ['track' => [
+                    ['item' => [
                         'name' => 'Not In Library', 'duration_ms' => 180000,
                         'external_ids' => ['isrc' => 'ZZZZZ0000000'],
                         'id' => 'spid2', 'artists' => [['name' => 'Nobody']],

@@ -9,6 +9,7 @@ use App\Services\SettingsService;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Http;
 use SoundChex\PlaylistPorter\Services\ImportedTrack;
+use SoundChex\PlaylistPorter\Services\PlaylistSourceException;
 
 /**
  * Imports playlists from Spotify (S-312).
@@ -91,15 +92,32 @@ class SpotifySource implements PlaylistSource
         $out = [];
         $url = self::API.'/me/playlists?limit=50';
 
+        // Which account is connected, so a playlist it cannot read can be
+        // flagged before the import rather than failing with a 403.
+        $me = $this->get(self::API.'/me')['id'] ?? null;
+
         // Spotify paginates with a `next` url; follow it to the end.
         while ($url !== null) {
             $body = $this->get($url);
 
             foreach ($body['items'] ?? [] as $playlist) {
+                if (! is_array($playlist)) {
+                    continue;
+                }
+
+                $owner = $playlist['owner']['id'] ?? null;
+
                 $out[] = [
                     'id' => (string) ($playlist['id'] ?? ''),
                     'name' => (string) ($playlist['name'] ?? 'Untitled'),
-                    'track_count' => $playlist['tracks']['total'] ?? null,
+                    // `items.total` on the current API; `tracks.total` on the
+                    // older shape. Accept either so the count is never blank.
+                    'track_count' => $playlist['items']['total']
+                        ?? $playlist['tracks']['total']
+                        ?? null,
+                    // A development-mode app may only read what this account
+                    // created; the picker greys the rest out.
+                    'readable' => $me === null || $owner === null || $owner === $me,
                 ];
             }
 
@@ -115,16 +133,23 @@ class SpotifySource implements PlaylistSource
         $name = (string) ($meta['name'] ?? 'Spotify playlist');
 
         $tracks = [];
-        $url = self::API."/playlists/{$playlistId}/tracks?limit=100&fields=next,items(track(name,duration_ms,external_ids(isrc),id,artists(name),album(name)))";
+
+        // `/items`, not `/tracks`: the older path answers 403 Forbidden for an
+        // app in Spotify's development mode, even reading a playlist the user
+        // owns. `/items` returns the same rows and paginates the same way.
+        $url = self::API."/playlists/{$playlistId}/items?limit=100&fields=next,items(item(name,duration_ms,external_ids(isrc),id,artists(name),album(name)))";
 
         while ($url !== null) {
             $body = $this->get($url);
 
             foreach ($body['items'] ?? [] as $row) {
-                $track = $row['track'] ?? null;
+                // `/items` names the row's payload `item`; the older `/tracks`
+                // called it `track`. Accept either, so a future move back does
+                // not silently import nothing.
+                $track = $row['item'] ?? $row['track'] ?? null;
 
                 if (! is_array($track) || blank($track['name'] ?? null)) {
-                    continue; // a removed/unavailable track
+                    continue; // a removed/unavailable track, or a podcast episode
                 }
 
                 $tracks[] = new ImportedTrack(
@@ -155,6 +180,19 @@ class SpotifySource implements PlaylistSource
         if ($response->status() === 401) {
             $this->refresh();
             $response = Http::withToken($this->accessToken())->get($url);
+        }
+
+        // Spotify answers 403 for a playlist the connected account did not
+        // create while the Spotify app is in development mode — reading
+        // someone else's playlist, however public, needs an extended quota
+        // that is not open to individual developers. The raw "Forbidden" said
+        // none of that, so name the cause here.
+        if ($response->status() === 403) {
+            throw new PlaylistSourceException(
+                'Spotify refused that playlist. While your Spotify app is in development mode it can '
+                .'only read playlists the connected account created. Copy the playlist to your own '
+                .'account in Spotify and import that, or export it as a file and import the file.'
+            );
         }
 
         $response->throw();

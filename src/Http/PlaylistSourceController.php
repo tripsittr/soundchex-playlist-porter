@@ -15,6 +15,7 @@ use SoundChex\PlaylistPorter\Jobs\ImportPlaylistJob;
 use SoundChex\PlaylistPorter\Models\PlaylistImport;
 use SoundChex\PlaylistPorter\Services\PlaylistImportService;
 use SoundChex\PlaylistPorter\Services\Sources\PlaylistSource;
+use SoundChex\PlaylistPorter\Services\PlaylistSourceException;
 use SoundChex\PlaylistPorter\Services\Sources\PlaylistSourceRegistry;
 
 /**
@@ -137,6 +138,9 @@ class PlaylistSourceController extends Controller
 
         try {
             $fetched = $connector->fetch($data['playlist_id']);
+        } catch (PlaylistSourceException $e) {
+            // The service refused for a reason the user can act on; say which.
+            return response()->json(['message' => $e->getMessage()], 422);
         } catch (\Throwable $e) {
             return response()->json(['message' => 'Could not read that playlist.'], 422);
         }
