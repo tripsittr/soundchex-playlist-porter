@@ -130,7 +130,15 @@
 
     {{-- Setup, in a modal. --}}
     @if ($settingUp !== null)
-        <x-filament::modal id="scpp-setup" :visible="true" width="lg" wire:close="closeSetup">
+        {{-- A slide-over rather than a centred dialog: setup is a side errand
+             to the page, and the page stays readable behind it (S-348). --}}
+        <x-filament::modal
+            id="scpp-setup"
+            :visible="true"
+            slide-over
+            width="lg"
+            wire:close="closeSetup"
+        >
             <x-slot name="heading">Set up {{ $this->setupName() }}</x-slot>
 
             <div class="space-y-4">
@@ -290,11 +298,30 @@
 
             @php($unmatched = $import->unmatched ?? [])
             @if (count($unmatched) > 0)
-                <div class="space-y-4">
+                {{-- A count and a way in, rather than the whole list inline.
+                     Resolving is deliberate work and deserves its own surface;
+                     the result section stays a summary (S-348). --}}
+                <div class="flex flex-wrap items-center justify-between gap-3">
                     <p class="text-sm text-gray-600 dark:text-gray-400">
                         {{ count($unmatched) }} track{{ count($unmatched) === 1 ? '' : 's' }} weren’t in your library.
-                        Match one to a track you own, or leave it out.
                     </p>
+
+                    <x-filament::button size="sm" color="info" wire:click="openResolve">
+                        Resolve {{ count($unmatched) }}
+                    </x-filament::button>
+                </div>
+
+                <x-filament::modal
+                    id="scpp-resolve"
+                    :visible="$resolving"
+                    slide-over
+                    width="2xl"
+                    wire:close="closeResolve"
+                >
+                    <x-slot name="heading">Unmatched tracks</x-slot>
+                    <x-slot name="description">
+                        Pick the library track each one should be, or leave it out of the playlist.
+                    </x-slot>
 
                     <ul class="divide-y divide-gray-100 dark:divide-white/10">
                         @foreach ($unmatched as $index => $track)
@@ -346,7 +373,7 @@
                             </li>
                         @endforeach
                     </ul>
-                </div>
+                </x-filament::modal>
             @else
                 <p class="text-sm text-success-600">Every track was matched to your library.</p>
             @endif
