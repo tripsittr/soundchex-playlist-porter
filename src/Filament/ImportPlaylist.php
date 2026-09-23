@@ -544,6 +544,21 @@ class ImportPlaylist extends Page
         return app(PlaylistSourceRegistry::class)->planned();
     }
 
+    // MARK: - Resolving unmatched tracks in a slide-over (S-348)
+
+    /** Whether the resolve panel is open. */
+    public bool $resolving = false;
+
+    public function openResolve(): void
+    {
+        $this->resolving = true;
+    }
+
+    public function closeResolve(): void
+    {
+        $this->resolving = false;
+    }
+
     // MARK: - Setup, in a modal rather than inline (S-347)
 
     /** The source whose setup modal is open, if any. */
