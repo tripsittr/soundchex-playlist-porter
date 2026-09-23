@@ -21,7 +21,32 @@ class PlaylistSourceRegistry
     {
         return [
             app(SpotifySource::class),
-            // AppleMusicSource, YouTubeMusicSource — added as they are built.
+            app(YouTubeMusicSource::class),
+        ];
+    }
+
+    /**
+     * Services the page should show as coming, with why they are not here yet.
+     *
+     * Listing them is honest about the plan without pretending they work: each
+     * needs something SoundChex cannot provide on the operator's behalf, so a
+     * greyed card that says so beats a button that fails (S-347).
+     *
+     * @return array<int, array{name: string, note: string}>
+     */
+    public function planned(): array
+    {
+        return [
+            [
+                'name' => 'Apple Music',
+                'note' => 'Needs a paid Apple Developer account: playlists are read with a '
+                    .'MusicKit developer token signed by your own private key.',
+            ],
+            [
+                'name' => 'Amazon Music',
+                'note' => 'Amazon has no public playlist API. Export to a file and import that '
+                    .'in the meantime.',
+            ],
         ];
     }
 

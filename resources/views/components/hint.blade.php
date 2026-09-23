@@ -2,29 +2,50 @@
 {{-- Copyright (C) 2026 SoundChex --}}
 
 {{--
-    An explanation that stays out of the way until asked for (S-331).
+    An explanation that stays out of the way until asked for (S-331, S-347).
 
-    The page used to carry its guidance as prose under every heading, which
-    made a short form look like a document. The words are the same; they now
-    live behind a question mark that shows them on hover and on focus, so the
-    keyboard reaches them too.
+    Styled with its own CSS rather than Tailwind utilities: the app's Tailwind
+    build only scans its own views, so utility classes written in a plugin are
+    never generated. `opacity-0` simply did not exist, which is why the tooltip
+    text sat visible on the page with nothing hovering it.
 --}}
 @props(['text'])
 
-<span
-    class="group relative inline-flex align-middle"
-    tabindex="0"
-    role="note"
-    aria-label="{{ $text }}"
->
-    <x-filament::icon
-        icon="heroicon-m-question-mark-circle"
-        class="h-4 w-4 text-gray-400 transition hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300"
-    />
+@once
+    <style>
+        .scpp-hint { position: relative; display: inline-flex; vertical-align: middle; }
+        .scpp-hint__icon {
+            width: 1rem; height: 1rem; border-radius: 9999px;
+            display: inline-flex; align-items: center; justify-content: center;
+            font-size: .7rem; font-weight: 700; line-height: 1;
+            color: rgb(107 114 128); border: 1px solid currentColor;
+            cursor: help; transition: color .15s ease;
+        }
+        .scpp-hint:hover .scpp-hint__icon,
+        .scpp-hint:focus-visible .scpp-hint__icon { color: rgb(59 130 246); }
 
-    <span
-        class="pointer-events-none absolute left-1/2 top-full z-20 mt-2 w-64 -translate-x-1/2 rounded-lg bg-gray-900 px-3 py-2 text-xs font-normal leading-relaxed text-white opacity-0 shadow-lg transition group-hover:opacity-100 group-focus:opacity-100 dark:bg-gray-700"
-    >
-        {{ $text }}
-    </span>
+        .scpp-hint__bubble {
+            position: absolute; left: 50%; top: calc(100% + .5rem);
+            transform: translateX(-50%);
+            z-index: 50; width: 16rem;
+            border-radius: .5rem; padding: .5rem .75rem;
+            background: rgb(17 24 39); color: #fff;
+            font-size: .75rem; font-weight: 400; line-height: 1.5;
+            text-align: left; white-space: normal;
+            box-shadow: 0 10px 20px rgb(0 0 0 / .25);
+            /* Hidden outright, not merely transparent: a see-through tooltip
+               still takes part in layout and can be read by a screen reader
+               twice. */
+            visibility: hidden; opacity: 0;
+            transition: opacity .15s ease, visibility .15s ease;
+            pointer-events: none;
+        }
+        .scpp-hint:hover .scpp-hint__bubble,
+        .scpp-hint:focus-visible .scpp-hint__bubble { visibility: visible; opacity: 1; }
+    </style>
+@endonce
+
+<span class="scpp-hint" tabindex="0" role="note" aria-label="{{ $text }}">
+    <span class="scpp-hint__icon" aria-hidden="true">?</span>
+    <span class="scpp-hint__bubble">{{ $text }}</span>
 </span>

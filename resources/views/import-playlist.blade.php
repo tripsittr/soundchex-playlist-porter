@@ -5,178 +5,170 @@
 <x-filament-panels::page>
     @php($import = $this->currentImport())
 
-    {{-- Connect a streaming service --}}
+    <x-playlist-porter::styles />
+
+    {{-- Services, as a grid of cards. Setup and the redirect URI live in a
+         modal now: they were three stacked panels of forms and explanation on
+         a page whose actual job is two clicks (S-347). --}}
     <x-filament::section>
-        <x-slot name="heading">Connect a music service</x-slot>
-        <x-slot name="description">
-            Import straight from your account — no file needed. Spotify has no playlist file to
-            export, so connecting is the way to bring a Spotify playlist in.
+        <x-slot name="heading">
+            <span class="inline-flex items-center gap-1.5">
+                Music services
+                <x-playlist-porter::hint
+                    text="Connect an account and import straight from it. Spotify and YouTube Music each need a free developer app registered once — the Set up button shows you what to paste."
+                />
+            </span>
         </x-slot>
 
-        <div class="space-y-4">
+        <div class="scpp-sources">
             @foreach ($this->sources() as $source)
-                <div class="flex flex-col gap-4 rounded-lg border border-gray-200 p-4 dark:border-white/10 sm:flex-row sm:items-center sm:justify-between">
-                    <div class="flex items-center gap-3">
-                        <span class="text-sm font-semibold text-gray-950 dark:text-white">{{ $source['name'] }}</span>
-                        @if (! $source['configured'])
-                            <x-filament::badge color="gray">Not set up</x-filament::badge>
-                        @elseif ($source['connected'])
-                            <x-filament::badge color="success">Connected</x-filament::badge>
+                <div class="scpp-source" wire:key="source-{{ $source['key'] }}">
+                    <div>
+                        <p class="scpp-source__name">{{ $source['name'] }}</p>
+                        @if ($source['connected'])
+                            <x-filament::badge color="success" size="sm">Connected</x-filament::badge>
+                        @elseif ($source['configured'])
+                            <x-filament::badge color="warning" size="sm">Not connected</x-filament::badge>
                         @else
-                            <x-filament::badge color="warning">Not connected</x-filament::badge>
+                            <x-filament::badge color="gray" size="sm">Not set up</x-filament::badge>
                         @endif
                     </div>
 
-                    <div class="flex flex-wrap items-center gap-2">
-                        @if ($source['configured'] && $source['connected'])
+                    <div class="flex items-center gap-2">
+                        @if ($source['connected'])
                             <x-filament::button size="sm" wire:click="loadPlaylists('{{ $source['key'] }}')">
-                                Load my playlists
+                                Playlists
                             </x-filament::button>
-                            {{-- The listing is cached, so there has to be a way
-                                 to go and look again (S-335). --}}
-                            <x-filament::button
-                                size="sm"
-                                color="gray"
-                                icon="heroicon-m-arrow-path"
-                                wire:click="refreshPlaylists('{{ $source['key'] }}')"
-                                wire:loading.attr="disabled"
-                                wire:target="refreshPlaylists"
-                            >
-                                Refresh
-                            </x-filament::button>
-                            <x-filament::button size="sm" color="gray" wire:click="disconnectSource('{{ $source['key'] }}')">
-                                Disconnect
-                            </x-filament::button>
+                            <x-filament::dropdown placement="bottom-end">
+                                <x-slot name="trigger">
+                                    <x-filament::icon-button
+                                        icon="heroicon-m-ellipsis-vertical"
+                                        label="More"
+                                    />
+                                </x-slot>
+                                <x-filament::dropdown.list>
+                                    <x-filament::dropdown.list.item wire:click="refreshPlaylists('{{ $source['key'] }}')">
+                                        Refresh playlists
+                                    </x-filament::dropdown.list.item>
+                                    <x-filament::dropdown.list.item wire:click="openSetup('{{ $source['key'] }}')">
+                                        Change credentials
+                                    </x-filament::dropdown.list.item>
+                                    <x-filament::dropdown.list.item wire:click="disconnectSource('{{ $source['key'] }}')" color="danger">
+                                        Disconnect
+                                    </x-filament::dropdown.list.item>
+                                </x-filament::dropdown.list>
+                            </x-filament::dropdown>
                         @elseif ($source['configured'])
-                            {{-- A real link (not a scripted popup) so the browser
-                                 does not block the new tab. --}}
                             <x-filament::button
                                 tag="a"
                                 size="sm"
                                 target="_blank"
                                 href="{{ route('playlist-porter.oauth.start', ['source' => $source['key']]) }}"
                             >
-                                Connect {{ $source['name'] }}
+                                Connect
+                            </x-filament::button>
+                            <x-filament::button size="sm" color="gray" wire:click="openSetup('{{ $source['key'] }}')">
+                                Set up
+                            </x-filament::button>
+                        @else
+                            <x-filament::button size="sm" color="gray" wire:click="openSetup('{{ $source['key'] }}')">
+                                Set up
                             </x-filament::button>
                         @endif
                     </div>
                 </div>
-
-                {{-- The redirect URI is shown whether or not credentials are saved:
-                     a mismatch here is the usual cause of Spotify's
-                     "redirect_uri: Not matching configuration" (S-322), and it
-                     needs to be re-checkable after setup. --}}
-                @if ($source['key'] === 'spotify')
-                    <div class="space-y-3 rounded-lg border border-gray-200 p-4 dark:border-white/10">
-                        <div class="space-y-1.5">
-                            <label class="text-sm font-medium text-gray-950 dark:text-white">Redirect URI to add in Spotify</label>
-                            <code class="block w-full overflow-x-auto rounded-md bg-gray-100 px-3 py-2 text-xs text-gray-800 dark:bg-white/10 dark:text-gray-200">{{ $this->spotifyRedirectUri() }}</code>
-                            <p class="text-xs text-gray-600 dark:text-gray-400">
-                                Paste this into your Spotify app's <span class="font-medium">Redirect URIs</span> exactly as shown, then save it there.
-                                Spotify rejects any difference, including the port and a trailing slash.
-                            </p>
-                        </div>
-
-                        <details class="text-sm">
-                            <summary class="cursor-pointer text-gray-600 hover:underline dark:text-gray-400">
-                                This server answers on more than one address — change the one used here
-                            </summary>
-                            <form wire:submit="saveOauthBaseUrl" class="mt-3 space-y-2">
-                                <p class="text-xs text-gray-600 dark:text-gray-400">
-                                    The address Spotify should send you back to. It must be one this browser can reach.
-                                    Leave it empty to use the server's own address ({{ $this->oauthBaseUrlDefault() }}).
-                                </p>
-                                <div class="flex flex-wrap items-start gap-2">
-                                    <x-filament::input.wrapper class="grow">
-                                        <x-filament::input type="url" wire:model="oauthBaseUrl" placeholder="{{ $this->oauthBaseUrlDefault() }}" />
-                                    </x-filament::input.wrapper>
-                                    <x-filament::button type="submit" size="sm" color="gray">Save</x-filament::button>
-                                </div>
-                                @error('oauthBaseUrl') <p class="text-xs text-danger-600">{{ $message }}</p> @enderror
-                            </form>
-                        </details>
-                    </div>
-                @endif
-
-                {{-- First-time setup for Spotify: the app credentials the operator
-                     registers once at developer.spotify.com. --}}
-                @if ($source['key'] === 'spotify' && ! $source['configured'])
-                    <div class="space-y-4 rounded-lg border border-dashed border-gray-300 p-4 dark:border-white/15">
-                        <div class="space-y-1">
-                            <p class="text-sm font-medium text-gray-950 dark:text-white">Set up Spotify (one time)</p>
-                            <p class="text-sm text-gray-600 dark:text-gray-400">
-                                Create an app at
-                                <a href="https://developer.spotify.com/dashboard" target="_blank" class="text-primary-600 hover:underline">developer.spotify.com/dashboard</a>,
-                                add the redirect URI below to it, then paste its Client ID and Client Secret here.
-                            </p>
-                        </div>
-
-                        <form wire:submit="saveSpotifyCredentials" class="space-y-3">
-                            <div class="grid gap-3 sm:grid-cols-2">
-                                <div class="space-y-1.5">
-                                    <label class="text-sm font-medium text-gray-950 dark:text-white">Client ID</label>
-                                    <x-filament::input.wrapper>
-                                        <x-filament::input type="text" wire:model="spotifyClientId" placeholder="From your Spotify app" />
-                                    </x-filament::input.wrapper>
-                                    @error('spotifyClientId') <p class="text-xs text-danger-600">{{ $message }}</p> @enderror
-                                </div>
-                                <div class="space-y-1.5">
-                                    <label class="text-sm font-medium text-gray-950 dark:text-white">Client Secret</label>
-                                    <x-filament::input.wrapper>
-                                        <x-filament::input type="password" wire:model="spotifyClientSecret" placeholder="From your Spotify app" />
-                                    </x-filament::input.wrapper>
-                                    @error('spotifyClientSecret') <p class="text-xs text-danger-600">{{ $message }}</p> @enderror
-                                </div>
-                            </div>
-                            <x-filament::button type="submit" size="sm">Save Spotify credentials</x-filament::button>
-                        </form>
-                    </div>
-                @endif
             @endforeach
 
-            {{-- The connected service's playlists to pick from --}}
-            @if (! empty($this->servicePlaylists))
-                <div class="rounded-lg border border-gray-200 dark:border-white/10">
-                    <ul class="divide-y divide-gray-100 dark:divide-white/10">
-                        @foreach ($this->servicePlaylists as $pl)
-                            <li class="flex items-center justify-between gap-3 px-4 py-3">
-                                <div class="min-w-0">
-                                    <p class="truncate text-sm font-medium text-gray-950 dark:text-white">{{ $pl['name'] }}</p>
-                                    @if (! empty($pl['track_count']))
-                                        <p class="text-xs text-gray-500 dark:text-gray-400">{{ $pl['track_count'] }} tracks</p>
-                                    @endif
-                                    {{-- A development-mode Spotify app may only read
-                                         playlists the connected account created, so
-                                         say so here rather than after a failed click. --}}
-                                    @if (isset($pl['readable']) && ! $pl['readable'])
-                                        <p class="text-xs text-gray-500 dark:text-gray-400">
-                                            Made by someone else — Spotify will not let this app read it.
-                                        </p>
-                                    @endif
-                                </div>
+            {{-- Named, but honest about why they are not here yet. --}}
+            @foreach ($this->plannedSources() as $planned)
+                <div class="scpp-source" style="opacity:.6">
+                    <div>
+                        <p class="scpp-source__name">{{ $planned['name'] }}</p>
+                        <span class="scpp-source__soon">Not yet available</span>
+                    </div>
+                    <x-playlist-porter::hint :text="$planned['note']" />
+                </div>
+            @endforeach
+        </div>
+
+        @if (! empty($this->servicePlaylists))
+            <div class="mt-5">
+                <p class="mb-2 text-sm font-medium text-gray-950 dark:text-white">
+                    Your playlists
+                </p>
+                <ul class="divide-y divide-gray-100 rounded-lg border border-gray-200 dark:divide-white/10 dark:border-white/10">
+                    @foreach ($this->servicePlaylists as $pl)
+                        <li class="scpp-row" style="padding-left:1rem;padding-right:1rem" wire:key="pl-{{ $pl['id'] }}">
+                            <div class="scpp-row__text">
+                                <p class="scpp-row__title text-gray-950 dark:text-white">{{ $pl['name'] }}</p>
+                                @if (! empty($pl['track_count']))
+                                    <p class="scpp-row__meta">{{ $pl['track_count'] }} tracks</p>
+                                @endif
                                 @if (isset($pl['readable']) && ! $pl['readable'])
-                                    <x-filament::button size="sm" color="gray" disabled>
-                                        Import
-                                    </x-filament::button>
+                                    <p class="scpp-row__meta">Made by someone else — the service will not let this app read it.</p>
+                                @endif
+                            </div>
+                            <div class="scpp-row__actions">
+                                @if (isset($pl['readable']) && ! $pl['readable'])
+                                    <x-filament::button size="sm" color="gray" disabled>Import</x-filament::button>
                                 @else
                                     <x-filament::button
                                         size="sm"
-                                        color="gray"
-                                        wire:click="importFromSource('spotify', '{{ $pl['id'] }}')"
+                                        wire:click="importFromSource('{{ $pl['source'] ?? 'spotify' }}', '{{ $pl['id'] }}')"
                                         wire:loading.attr="disabled"
                                     >
                                         Import
                                     </x-filament::button>
                                 @endif
-                            </li>
-                        @endforeach
-                    </ul>
-                </div>
-            @endif
-        </div>
+                            </div>
+                        </li>
+                    @endforeach
+                </ul>
+            </div>
+        @endif
     </x-filament::section>
 
-    {{-- Import from a file --}}
+    {{-- Setup, in a modal. --}}
+    @if ($settingUp !== null)
+        <x-filament::modal id="scpp-setup" :visible="true" width="lg" wire:close="closeSetup">
+            <x-slot name="heading">Set up {{ $this->setupName() }}</x-slot>
+
+            <div class="space-y-4">
+                <div class="space-y-1.5">
+                    <label class="scpp-label text-gray-950 dark:text-white">
+                        Redirect URI
+                        <x-playlist-porter::hint text="Paste this into your app's redirect URI list exactly as shown. The service rejects any difference, including the port and a trailing slash." />
+                    </label>
+                    <code class="block w-full overflow-x-auto rounded-md bg-gray-100 px-3 py-2 text-xs text-gray-800 dark:bg-white/10 dark:text-gray-200">{{ $this->setupRedirectUri() }}</code>
+                </div>
+
+                <form wire:submit="saveSetup" class="space-y-3">
+                    <div class="scpp-form-grid">
+                        <div>
+                            <label class="scpp-label text-gray-950 dark:text-white">Client ID</label>
+                            <x-filament::input.wrapper>
+                                <x-filament::input type="text" wire:model="setupClientId" />
+                            </x-filament::input.wrapper>
+                            @error('setupClientId') <p class="text-xs text-danger-600">{{ $message }}</p> @enderror
+                        </div>
+                        <div>
+                            <label class="scpp-label text-gray-950 dark:text-white">Client Secret</label>
+                            <x-filament::input.wrapper>
+                                <x-filament::input type="password" wire:model="setupClientSecret" />
+                            </x-filament::input.wrapper>
+                            @error('setupClientSecret') <p class="text-xs text-danger-600">{{ $message }}</p> @enderror
+                        </div>
+                    </div>
+
+                    <div class="flex justify-end gap-2">
+                        <x-filament::button type="button" color="gray" wire:click="closeSetup">Cancel</x-filament::button>
+                        <x-filament::button type="submit">Save</x-filament::button>
+                    </div>
+                </form>
+            </div>
+        </x-filament::modal>
+    @endif
+
     <x-filament::section>
         <x-slot name="heading">
             <span class="inline-flex items-center gap-1.5">
@@ -306,41 +298,35 @@
 
                     <ul class="divide-y divide-gray-100 dark:divide-white/10">
                         @foreach ($unmatched as $index => $track)
-                            {{-- Text on the left, controls hard right: the inputs
-                                 used to sit against the track name and read as
-                                 part of it (S-332). --}}
-                            <li class="flex flex-col gap-3 py-4 sm:flex-row sm:items-start sm:justify-between sm:gap-6" wire:key="unmatched-{{ $index }}">
-                                <div class="min-w-0 sm:flex-1 sm:pt-1">
-                                    <p class="truncate text-sm font-medium text-gray-950 dark:text-white">
+                            {{-- Layout comes from the plugin's own CSS: the
+                                 app's Tailwind build does not scan plugin views,
+                                 so utility classes written here are never
+                                 compiled and the controls stayed left (S-347). --}}
+                            <li class="scpp-row" wire:key="unmatched-{{ $index }}">
+                                <div class="scpp-row__text">
+                                    <p class="scpp-row__title text-gray-950 dark:text-white">
                                         {{ $track['title'] ?? $track['source_label'] ?? 'Unknown track' }}
                                     </p>
                                     @if (! empty($track['artist']) || ! empty($track['album']))
-                                        <p class="truncate text-xs text-gray-500 dark:text-gray-400">
+                                        <p class="scpp-row__meta">
                                             {{ collect([$track['artist'] ?? null, $track['album'] ?? null])->filter()->implode(' · ') }}
                                         </p>
                                     @endif
                                 </div>
 
-                                <div class="flex shrink-0 flex-col items-stretch gap-2 sm:ml-auto sm:items-end">
-                                    {{-- The matcher's own suggestions first: picking
-                                         one is a click, not a database id. Coloured,
-                                         because accepting a suggestion is the action
-                                         this row exists for (S-334). --}}
+                                <div class="scpp-row__actions">
                                     @foreach ($track['candidates'] ?? [] as $candidate)
                                         <x-filament::button
                                             size="sm"
-                                            color="primary"
+                                            color="info"
                                             icon="heroicon-m-check"
                                             wire:click="acceptCandidate({{ $index }}, {{ $candidate['media_item_id'] }})"
                                         >
-                                            Use “{{ Str::limit($candidate['title'], 30) }}”
-                                            @if (! empty($candidate['album']))
-                                                <span class="font-normal opacity-70">· {{ Str::limit($candidate['album'], 20) }}</span>
-                                            @endif
+                                            Use “{{ Str::limit($candidate['title'], 28) }}”
                                         </x-filament::button>
                                     @endforeach
 
-                                    <div class="flex items-center justify-end gap-2">
+                                    <div class="flex items-center gap-2">
                                         <x-filament::input.wrapper class="w-40">
                                             <x-filament::input
                                                 type="text"
@@ -350,7 +336,7 @@
                                         </x-filament::input.wrapper>
                                         <x-filament::button
                                             size="sm"
-                                            color="success"
+                                            color="info"
                                             wire:click="resolve({{ $index }})"
                                         >
                                             Match
