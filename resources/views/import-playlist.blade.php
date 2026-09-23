@@ -32,6 +32,18 @@
                             <x-filament::button size="sm" wire:click="loadPlaylists('{{ $source['key'] }}')">
                                 Load my playlists
                             </x-filament::button>
+                            {{-- The listing is cached, so there has to be a way
+                                 to go and look again (S-335). --}}
+                            <x-filament::button
+                                size="sm"
+                                color="gray"
+                                icon="heroicon-m-arrow-path"
+                                wire:click="refreshPlaylists('{{ $source['key'] }}')"
+                                wire:loading.attr="disabled"
+                                wire:target="refreshPlaylists"
+                            >
+                                Refresh
+                            </x-filament::button>
                             <x-filament::button size="sm" color="gray" wire:click="disconnectSource('{{ $source['key'] }}')">
                                 Disconnect
                             </x-filament::button>
@@ -166,32 +178,44 @@
 
     {{-- Import from a file --}}
     <x-filament::section>
-        <x-slot name="heading">Import from a file</x-slot>
-        <x-slot name="description">
-            Upload an M3U, CSV (including Spotify/Exportify exports), or XSPF file. Each track is
-            matched to your library and saved as a playlist.
+        <x-slot name="heading">
+            <span class="inline-flex items-center gap-1.5">
+                Import from a file
+                <x-playlist-porter::hint
+                    text="Upload an M3U, CSV (including Spotify and Exportify exports) or XSPF file. Every track is matched against your library and saved as a SoundChex playlist; anything that cannot be matched is listed for you to resolve."
+                />
+            </span>
         </x-slot>
 
-        <form wire:submit="import" class="space-y-5">
-            <div class="space-y-1.5">
-                <label class="text-sm font-medium text-gray-950 dark:text-white">Playlist file</label>
-                <input
-                    type="file"
-                    wire:model="file"
-                    accept=".m3u,.m3u8,.csv,.xspf,text/plain,text/csv,application/xml"
-                    class="block w-full text-sm text-gray-700 file:mr-4 file:rounded-lg file:border-0 file:bg-primary-600 file:px-4 file:py-2.5 file:text-sm file:font-semibold file:text-white hover:file:bg-primary-500 dark:text-gray-300"
-                />
-                @error('file') <p class="text-sm text-danger-600">{{ $message }}</p> @enderror
-                <p wire:loading wire:target="file" class="text-sm text-gray-500">Uploading…</p>
-            </div>
+        {{-- The file and the name sit side by side: two short fields do not
+             need two full-width rows, and the form then reads as one action
+             rather than a questionnaire (S-331). --}}
+        <form wire:submit="import" class="space-y-4">
+            <div class="grid gap-4 sm:grid-cols-[2fr,1fr]">
+                <div class="space-y-1.5">
+                    <label class="flex items-center gap-1.5 text-sm font-medium text-gray-950 dark:text-white">
+                        Playlist file
+                        <x-playlist-porter::hint text="M3U, M3U8, CSV or XSPF. A Spotify export from Exportify works as-is." />
+                    </label>
+                    <input
+                        type="file"
+                        wire:model="file"
+                        accept=".m3u,.m3u8,.csv,.xspf,text/plain,text/csv,application/xml"
+                        class="block w-full rounded-lg border border-gray-300 text-sm text-gray-700 file:mr-4 file:rounded-l-lg file:border-0 file:bg-primary-600 file:px-4 file:py-2.5 file:text-sm file:font-semibold file:text-white hover:file:bg-primary-500 dark:border-white/10 dark:text-gray-300"
+                    />
+                    @error('file') <p class="text-sm text-danger-600">{{ $message }}</p> @enderror
+                    <p wire:loading wire:target="file" class="text-sm text-gray-500">Uploading…</p>
+                </div>
 
-            <div class="space-y-1.5">
-                <label class="text-sm font-medium text-gray-950 dark:text-white">
-                    Playlist name <span class="font-normal text-gray-400">(optional)</span>
-                </label>
-                <x-filament::input.wrapper>
-                    <x-filament::input type="text" wire:model="name" placeholder="Taken from the file if left blank" />
-                </x-filament::input.wrapper>
+                <div class="space-y-1.5">
+                    <label class="flex items-center gap-1.5 text-sm font-medium text-gray-950 dark:text-white">
+                        Name
+                        <x-playlist-porter::hint text="Leave this blank to use the name stored in the file." />
+                    </label>
+                    <x-filament::input.wrapper>
+                        <x-filament::input type="text" wire:model="name" placeholder="From the file" />
+                    </x-filament::input.wrapper>
+                </div>
             </div>
 
             <x-filament::button type="submit" wire:loading.attr="disabled" wire:target="import,file">
@@ -206,7 +230,19 @@
         <x-filament::section>
             <x-slot name="heading">{{ $import->name }}</x-slot>
             <x-slot name="description">
-                Matched {{ $import->matched_tracks }} of {{ $import->total_tracks }} tracks · from {{ strtoupper($import->source_format) }}
+                {{-- Badges rather than a run-on sentence: the two facts that
+                     matter are how much matched and where it came from (S-333). --}}
+                <div class="flex flex-wrap items-center gap-2">
+                    <x-filament::badge
+                        :color="$import->matched_tracks === $import->total_tracks ? 'success' : 'warning'"
+                    >
+                        {{ $import->matched_tracks }} of {{ $import->total_tracks }} matched
+                    </x-filament::badge>
+
+                    <x-filament::badge color="gray">
+                        {{ ucfirst($import->source_format) }}
+                    </x-filament::badge>
+                </div>
             </x-slot>
             @if ($import->collection_id)
                 <x-slot name="afterHeader">
@@ -270,8 +306,11 @@
 
                     <ul class="divide-y divide-gray-100 dark:divide-white/10">
                         @foreach ($unmatched as $index => $track)
-                            <li class="flex flex-col gap-3 py-4 sm:flex-row sm:items-center sm:justify-between" wire:key="unmatched-{{ $index }}">
-                                <div class="min-w-0">
+                            {{-- Text on the left, controls hard right: the inputs
+                                 used to sit against the track name and read as
+                                 part of it (S-332). --}}
+                            <li class="flex flex-col gap-3 py-4 sm:flex-row sm:items-start sm:justify-between sm:gap-6" wire:key="unmatched-{{ $index }}">
+                                <div class="min-w-0 sm:flex-1 sm:pt-1">
                                     <p class="truncate text-sm font-medium text-gray-950 dark:text-white">
                                         {{ $track['title'] ?? $track['source_label'] ?? 'Unknown track' }}
                                     </p>
@@ -281,13 +320,17 @@
                                         </p>
                                     @endif
                                 </div>
-                                <div class="flex flex-col items-stretch gap-2 sm:items-end">
+
+                                <div class="flex shrink-0 flex-col items-stretch gap-2 sm:ml-auto sm:items-end">
                                     {{-- The matcher's own suggestions first: picking
-                                         one is a click, not a database id. --}}
+                                         one is a click, not a database id. Coloured,
+                                         because accepting a suggestion is the action
+                                         this row exists for (S-334). --}}
                                     @foreach ($track['candidates'] ?? [] as $candidate)
                                         <x-filament::button
                                             size="sm"
-                                            color="gray"
+                                            color="primary"
+                                            icon="heroicon-m-check"
                                             wire:click="acceptCandidate({{ $index }}, {{ $candidate['media_item_id'] }})"
                                         >
                                             Use “{{ Str::limit($candidate['title'], 30) }}”
@@ -297,11 +340,21 @@
                                         </x-filament::button>
                                     @endforeach
 
-                                    <div class="flex items-center gap-2">
+                                    <div class="flex items-center justify-end gap-2">
                                         <x-filament::input.wrapper class="w-40">
-                                            <x-filament::input type="text" wire:model="resolveTo.{{ $index }}" placeholder="Library track id" />
+                                            <x-filament::input
+                                                type="text"
+                                                wire:model="resolveTo.{{ $index }}"
+                                                placeholder="Library track id"
+                                            />
                                         </x-filament::input.wrapper>
-                                        <x-filament::button size="sm" color="gray" wire:click="resolve({{ $index }})">Match</x-filament::button>
+                                        <x-filament::button
+                                            size="sm"
+                                            color="success"
+                                            wire:click="resolve({{ $index }})"
+                                        >
+                                            Match
+                                        </x-filament::button>
                                     </div>
                                 </div>
                             </li>
