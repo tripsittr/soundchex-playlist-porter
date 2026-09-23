@@ -534,7 +534,90 @@ class ImportPlaylist extends Page
             'name' => $s->name(),
             'configured' => $s->isConfigured(),
             'connected' => $s->isConnected(),
+            'redirect_uri' => app(OAuthRedirect::class)->for($s->key()),
         ], app(PlaylistSourceRegistry::class)->all());
+    }
+
+    /** Services that are planned but cannot be connected yet. */
+    public function plannedSources(): array
+    {
+        return app(PlaylistSourceRegistry::class)->planned();
+    }
+
+    // MARK: - Setup, in a modal rather than inline (S-347)
+
+    /** The source whose setup modal is open, if any. */
+    public ?string $settingUp = null;
+
+    public string $setupClientId = '';
+
+    public string $setupClientSecret = '';
+
+    public function openSetup(string $key): void
+    {
+        $this->settingUp = $key;
+        $this->setupClientId = '';
+        $this->setupClientSecret = '';
+    }
+
+    public function closeSetup(): void
+    {
+        $this->settingUp = null;
+    }
+
+    /** The redirect URI for the source currently being set up. */
+    public function setupRedirectUri(): string
+    {
+        return $this->settingUp === null
+            ? ''
+            : app(OAuthRedirect::class)->for($this->settingUp);
+    }
+
+    /** The human name of the source being set up. */
+    public function setupName(): string
+    {
+        return app(PlaylistSourceRegistry::class)->get((string) $this->settingUp)?->name() ?? 'Service';
+    }
+
+    /**
+     * Save an operator's app credentials for whichever service is being set up.
+     *
+     * One form for every connector rather than a Spotify-shaped one: each
+     * service stores its id and secret under its own settings prefix, which is
+     * all that differs between them.
+     */
+    public function saveSetup(): void
+    {
+        $this->validate([
+            'setupClientId' => ['required', 'string', 'max:255'],
+            'setupClientSecret' => ['required', 'string', 'max:255'],
+        ]);
+
+        $prefix = match ($this->settingUp) {
+            'spotify' => 'spotify',
+            'youtube-music' => 'youtube',
+            default => null,
+        };
+
+        if ($prefix === null) {
+            return;
+        }
+
+        $settings = app(SettingsService::class);
+        $settings->set($prefix.'.client_id', trim($this->setupClientId));
+        $settings->set($prefix.'.client_secret', trim($this->setupClientSecret), encrypt: true);
+
+        $name = $this->setupName();
+
+        $this->setupClientId = '';
+        $this->setupClientSecret = '';
+        $this->settingUp = null;
+
+        Notification::make()
+            ->title($name.' is set up')
+            ->body('Now press Connect to authorise your account.')
+            ->success()
+            ->send();
     }
 
     /**
