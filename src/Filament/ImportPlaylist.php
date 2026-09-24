@@ -5,6 +5,7 @@
 
 namespace SoundChex\PlaylistPorter\Filament;
 
+use App\Models\Collection;
 use App\Models\MediaItem;
 use App\Services\SettingsService;
 use BackedEnum;
@@ -77,6 +78,22 @@ class ImportPlaylist extends Page
     public array $resolveTo = [];
 
     /**
+     * A name collision waiting on the user's answer (S-325).
+     *
+     * Importing the same playlist twice is the normal case — a service
+     * playlist changes and you bring it in again — and the old behaviour was
+     * to silently make a second playlist with the same name, leaving no way to
+     * tell which was which. When the name is already taken the import stops
+     * here and asks: keep both, or merge into the one that exists.
+     *
+     * The parsed tracks are held rather than re-read, so answering does not
+     * mean re-uploading the file or re-fetching the service playlist.
+     *
+     * @var array{name: string, existing_id: int, existing_name: string, existing_count: int, tracks: array<int, mixed>, format: ?string, source: string}|null
+     */
+    public ?array $pendingImport = null;
+
+    /**
      * Parse and match the uploaded file, creating the playlist.
      */
     public function import(PlaylistImportService $service): void
@@ -124,25 +141,137 @@ class ImportPlaylist extends Page
             ? $this->name
             : ($parsed['name'] ?? pathinfo($this->file->getClientOriginalName(), PATHINFO_FILENAME));
 
-        $import = PlaylistImport::create([
+        // Already have one by this name? Ask before writing anything (S-325).
+        if ($this->askAboutExisting($service, (string) $name, $parsed['tracks'], $parsed['format'] ?? null, 'file')) {
+            return;
+        }
+
+        $this->runImport($service, (string) $name, $parsed['tracks'], $parsed['format'] ?? null, 'file');
+    }
+
+    /**
+     * Stops the import to ask about a name the user already has, returning
+     * whether it did (S-325).
+     *
+     * Nothing is written before the answer: no `PlaylistImport` row, no
+     * playlist. An import that was abandoned at the prompt should leave no
+     * trace, and a merge must not have a half-made playlist to merge into.
+     *
+     * @param  array<int, mixed>  $tracks
+     */
+    private function askAboutExisting(
+        PlaylistImportService $service,
+        string $name,
+        array $tracks,
+        ?string $format,
+        string $source,
+    ): bool {
+        $existing = $service->existingPlaylist((int) Auth::id(), $name);
+
+        if ($existing === null) {
+            return false;
+        }
+
+        Log::info('playlist-porter: import name already in use, asking', [
             'user_id' => Auth::id(),
-            'source' => 'file',
-            'source_format' => $parsed['format'],
             'name' => $name,
-            'status' => PlaylistImport::STATUS_PENDING,
-            'total_tracks' => count($parsed['tracks']),
+            'existing_id' => $existing->id,
         ]);
 
-        Log::info('playlist-porter: file import created', [
+        $this->pendingImport = [
+            'name' => $name,
+            'existing_id' => $existing->id,
+            'existing_name' => (string) $existing->name,
+            'existing_count' => $existing->mediaItems()->count(),
+            'tracks' => $tracks,
+            'format' => $format,
+            'source' => $source,
+        ];
+
+        return true;
+    }
+
+    /** Keeps both playlists — the answer that matches the old behaviour. */
+    public function keepBoth(PlaylistImportService $service): void
+    {
+        if ($this->pendingImport === null) {
+            return;
+        }
+
+        $pending = $this->pendingImport;
+        $this->pendingImport = null;
+
+        $this->runImport($service, $pending['name'], $pending['tracks'], $pending['format'], $pending['source']);
+    }
+
+    /** Adds the import to the playlist that already exists. */
+    public function mergePlaylists(PlaylistImportService $service): void
+    {
+        if ($this->pendingImport === null) {
+            return;
+        }
+
+        $pending = $this->pendingImport;
+        $this->pendingImport = null;
+
+        // Re-read rather than trust the id held through the prompt: the
+        // playlist could have been deleted while the question sat open, and a
+        // merge into nothing should become an ordinary import, not a crash.
+        $existing = Collection::query()
+            ->where('user_id', Auth::id())
+            ->find($pending['existing_id']);
+
+        $this->runImport(
+            $service,
+            $pending['name'],
+            $pending['tracks'],
+            $pending['format'],
+            $pending['source'],
+            $existing,
+        );
+    }
+
+    /** Drops the import without writing anything. */
+    public function cancelPendingImport(): void
+    {
+        $this->pendingImport = null;
+    }
+
+    /**
+     * Records and runs one import, optionally merging into an existing
+     * playlist.
+     *
+     * @param  array<int, mixed>  $tracks
+     */
+    private function runImport(
+        PlaylistImportService $service,
+        string $name,
+        array $tracks,
+        ?string $format,
+        string $source,
+        ?Collection $mergeInto = null,
+    ): void {
+        $import = PlaylistImport::create([
+            'user_id' => Auth::id(),
+            'source' => $source,
+            'source_format' => $format,
+            'name' => $name,
+            'status' => PlaylistImport::STATUS_PENDING,
+            'total_tracks' => count($tracks),
+        ]);
+
+        Log::info('playlist-porter: import created', [
             'user_id' => Auth::id(),
             'import_id' => $import->id,
-            'track_count' => count($parsed['tracks']),
-            'source_format' => $parsed['format'] ?? null,
+            'track_count' => count($tracks),
+            'source' => $source,
+            'source_format' => $format,
+            'merge_into' => $mergeInto?->id,
         ]);
 
         // The admin is present and watching, so run it now rather than queue —
         // even a long playlist is a few seconds of matching.
-        $service->run($import, $parsed['tracks'], $name);
+        $service->run($import, $tracks, $name, $mergeInto);
 
         $this->importId = $import->id;
         $this->file = null;
@@ -150,15 +279,18 @@ class ImportPlaylist extends Page
         $this->resolveTo = [];
 
         $fresh = $import->fresh();
-        Log::info('playlist-porter: file import completed', [
+        Log::info('playlist-porter: import completed', [
             'user_id' => Auth::id(),
             'import_id' => $fresh?->id,
             'matched_tracks' => $fresh?->matched_tracks,
             'total_tracks' => $fresh?->total_tracks,
+            'merged' => $mergeInto !== null,
         ]);
 
         Notification::make()
-            ->title("Imported \"{$fresh->name}\"")
+            ->title($mergeInto !== null
+                ? "Merged into \"{$fresh->name}\""
+                : "Imported \"{$fresh->name}\"")
             ->body("{$fresh->matched_tracks} of {$fresh->total_tracks} tracks matched your library.")
             ->success()
             ->send();
@@ -766,41 +898,17 @@ class ImportPlaylist extends Page
             return;
         }
 
-        $import = PlaylistImport::create([
-            'user_id' => Auth::id(),
-            'source' => $source->key(),
-            'source_format' => $source->key(),
-            'name' => $fetched['name'],
-            'status' => PlaylistImport::STATUS_PENDING,
-            'total_tracks' => count($fetched['tracks']),
-        ]);
+        // Re-importing a service playlist is the whole point of this path — the
+        // playlist changed upstream and you are bringing it in again — so this
+        // is where the collision prompt matters most (S-325).
+        if ($this->askAboutExisting($service, (string) $fetched['name'], $fetched['tracks'], $source->key(), $source->key())) {
+            $this->servicePlaylists = [];
 
-        Log::info('playlist-porter: source import created', [
-            'user_id' => Auth::id(),
-            'source' => $key,
-            'import_id' => $import->id,
-            'track_count' => count($fetched['tracks']),
-        ]);
+            return;
+        }
 
-        $service->run($import, $fetched['tracks'], $fetched['name']);
+        $this->runImport($service, (string) $fetched['name'], $fetched['tracks'], $source->key(), $source->key());
 
-        $this->importId = $import->id;
-        $this->resolveTo = [];
         $this->servicePlaylists = [];
-
-        $fresh = $import->fresh();
-        Log::info('playlist-porter: source import completed', [
-            'user_id' => Auth::id(),
-            'source' => $key,
-            'import_id' => $fresh?->id,
-            'matched_tracks' => $fresh?->matched_tracks,
-            'total_tracks' => $fresh?->total_tracks,
-        ]);
-
-        Notification::make()
-            ->title("Imported \"{$fresh->name}\"")
-            ->body("{$fresh->matched_tracks} of {$fresh->total_tracks} tracks matched your library.")
-            ->success()
-            ->send();
     }
 }

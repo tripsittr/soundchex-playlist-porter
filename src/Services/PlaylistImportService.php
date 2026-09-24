@@ -62,21 +62,55 @@ class PlaylistImportService
     }
 
     /**
+     * A playlist this user already has under the name an import would use.
+     *
+     * Importing the same playlist twice is the normal case, not an edge one —
+     * a service playlist changes and you bring it in again. Without this the
+     * second import silently made a second playlist with the same name, and
+     * nothing told anyone which was which (S-325).
+     */
+    public function existingPlaylist(int $userId, string $name): ?Collection
+    {
+        $name = trim($name);
+
+        if ($name === '') {
+            return null;
+        }
+
+        return Collection::query()
+            ->where('user_id', $userId)
+            // Names are compared as the user reads them: "Road Trip" and
+            // "road trip" are the same playlist to a person.
+            ->whereRaw('LOWER(TRIM(name)) = ?', [mb_strtolower($name)])
+            ->orderBy('id')
+            ->first();
+    }
+
+    /**
      * Runs a prepared import: matches its tracks, creates the playlist, and
      * records the outcome. The tracks are passed in (already parsed) so this is
      * the same whether they came from a file or, later, a service.
      *
+     * `$mergeInto` adds to a playlist the user already has instead of making
+     * another with the same name. Tracks it already holds are left alone —
+     * `syncWithoutDetaching` keeps one row per item — so merging the same
+     * import twice is a no-op rather than a doubling (S-325).
+     *
      * @param  array<int, ImportedTrack>  $tracks
      */
-    public function run(PlaylistImport $import, array $tracks, string $playlistName): void
-    {
+    public function run(
+        PlaylistImport $import,
+        array $tracks,
+        string $playlistName,
+        ?Collection $mergeInto = null,
+    ): void {
         $import->update([
             'status' => PlaylistImport::STATUS_PROCESSING,
             'total_tracks' => count($tracks),
         ]);
 
         try {
-            $collection = Collection::create([
+            $collection = $mergeInto ?? Collection::create([
                 'user_id' => $import->user_id,
                 'name' => $playlistName !== '' ? $playlistName : 'Imported playlist',
                 'description' => 'Ported from '.($import->source_format ?? $import->source).'.',
@@ -85,7 +119,11 @@ class PlaylistImportService
             $matched = 0;
             $unmatched = [];
             $uncertain = [];
-            $sortOrder = 0;
+            // Append when merging: starting at zero again would interleave
+            // the new tracks through the playlist the user already had.
+            $sortOrder = $mergeInto === null
+                ? 0
+                : ((int) $collection->mediaItems()->max('sort_order') + 1);
 
             foreach ($tracks as $track) {
                 $match = $this->matcher->best($track);
