@@ -1,7 +1,7 @@
 {
   "id": "soundchex.playlist-porter",
   "name": "Playlist Porter",
-  "version": "1.3.1",
+  "version": "1.4.0",
   "author": "SoundChex",
   "description": "Bring your playlists with you. Import a playlist file (M3U, CSV, or XSPF) and it is matched to your library and saved as a SoundChex playlist, with anything it couldn't match listed for you to resolve. that adds an Import Playlist page to the admin, built on the porting engine the mobile app shares.",
   "minSoundChexVersion": "0.1.0",

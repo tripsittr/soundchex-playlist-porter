@@ -177,6 +177,58 @@
         </x-filament::modal>
     @endif
 
+    {{-- A playlist by this name already exists. Importing the same playlist
+         twice is the normal case, so this asks rather than assuming — and
+         nothing has been written yet, so cancelling leaves no trace (S-325). --}}
+    @if ($pendingImport !== null)
+        <x-filament::modal
+            id="scpp-existing"
+            :visible="true"
+            slide-over
+            width="lg"
+            wire:close="cancelPendingImport"
+        >
+            <x-slot name="heading">You already have a playlist called that</x-slot>
+
+            <div class="space-y-4">
+                <p class="text-sm text-gray-600 dark:text-gray-400">
+                    <span class="font-medium text-gray-950 dark:text-white">{{ $pendingImport['existing_name'] }}</span>
+                    already holds {{ $pendingImport['existing_count'] }}
+                    {{ \Illuminate\Support\Str::plural('track', $pendingImport['existing_count']) }}.
+                    This import has {{ count($pendingImport['tracks']) }}.
+                </p>
+
+                <div class="space-y-3">
+                    <button
+                        type="button"
+                        wire:click="mergePlaylists"
+                        class="w-full rounded-lg border border-gray-300 p-3 text-left hover:bg-gray-50 dark:border-white/10 dark:hover:bg-white/5"
+                    >
+                        <span class="block text-sm font-semibold text-gray-950 dark:text-white">Merge playlists</span>
+                        <span class="block text-sm text-gray-600 dark:text-gray-400">
+                            Add these tracks to the playlist you already have. Anything it already holds is left alone.
+                        </span>
+                    </button>
+
+                    <button
+                        type="button"
+                        wire:click="keepBoth"
+                        class="w-full rounded-lg border border-gray-300 p-3 text-left hover:bg-gray-50 dark:border-white/10 dark:hover:bg-white/5"
+                    >
+                        <span class="block text-sm font-semibold text-gray-950 dark:text-white">Keep both</span>
+                        <span class="block text-sm text-gray-600 dark:text-gray-400">
+                            Make a second playlist with the same name.
+                        </span>
+                    </button>
+                </div>
+            </div>
+
+            <x-slot name="footerActions">
+                <x-filament::button type="button" color="gray" wire:click="cancelPendingImport">Cancel</x-filament::button>
+            </x-slot>
+        </x-filament::modal>
+    @endif
+
     <x-filament::section>
         <x-slot name="heading">
             <span class="inline-flex items-center gap-1.5">
