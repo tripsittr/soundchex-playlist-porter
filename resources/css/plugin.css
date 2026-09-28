@@ -1,0 +1,215 @@
+/*
+ * SPDX-License-Identifier: AGPL-3.0-or-later
+ * Copyright (C) 2026 SoundChex
+ *
+ * The plugin's stylesheet (S-349).
+ *
+ * This used to live in an `@once` block inside a Blade component, with its
+ * colours written out as literal greys. Two problems with that: the rules were
+ * inlined into the page rather than cached as a stylesheet, and the colours
+ * were the plugin's own guesses at what the app looked like — so they were
+ * wrong whenever the palette moved.
+ *
+ * The host compiles this file when the plugin is enabled and serves it from
+ * `dist/plugin.css`.
+ *
+ * One caveat shapes everything below: **the host's design tokens are
+ * dark-mode values**. `--sc-base-600` is a dark border and `--sc-ink-500` a
+ * light grey; applied unconditionally they would make the admin panel's light
+ * mode unreadable. So the light values stay literal and the tokens are used
+ * under `.dark` — the same split the hand-written CSS made, except the dark
+ * half now follows the app instead of approximating it.
+ */
+
+/* One unmatched track: name on the left, everything actionable hard right,
+   so the eye reads description then choice. */
+.scpp-row {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1.5rem;
+    padding: 0.875rem 0;
+}
+
+.scpp-row + .scpp-row {
+    border-top: 1px solid rgb(229 231 235);
+}
+
+:is(.dark) .scpp-row + .scpp-row {
+    border-top-color: var(--sc-base-600, rgb(255 255 255 / 0.1));
+}
+
+.scpp-row__text {
+    min-width: 0;
+    flex: 1 1 auto;
+}
+
+.scpp-row__title {
+    font-size: 0.875rem;
+    font-weight: 500;
+    margin: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.scpp-row__meta {
+    font-size: 0.75rem;
+    color: rgb(107 114 128);
+    margin: 0.125rem 0 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+:is(.dark) .scpp-row__meta {
+    color: var(--sc-ink-500, rgb(156 163 175));
+}
+
+.scpp-row__actions {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 0.5rem;
+    flex: 0 0 auto;
+    margin-left: auto;
+}
+
+.scpp-row__actions > * {
+    margin-left: auto;
+}
+
+@media (max-width: 640px) {
+    .scpp-row {
+        flex-direction: column;
+        gap: 0.75rem;
+    }
+
+    .scpp-row__actions {
+        align-items: stretch;
+        width: 100%;
+    }
+
+    .scpp-row__actions > * {
+        margin-left: 0;
+    }
+}
+
+/* The source cards at the top of the page. */
+.scpp-sources {
+    display: grid;
+    gap: 0.75rem;
+    grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+}
+
+.scpp-source {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding: 0.875rem 1rem;
+    border: 1px solid rgb(229 231 235);
+    border-radius: 0.75rem;
+}
+
+:is(.dark) .scpp-source {
+    border-color: var(--sc-base-600, rgb(255 255 255 / 0.1));
+}
+
+.scpp-source__name {
+    font-size: 0.875rem;
+    font-weight: 600;
+}
+
+.scpp-source__soon {
+    font-size: 0.75rem;
+    color: rgb(107 114 128);
+}
+
+:is(.dark) .scpp-source__soon {
+    color: var(--sc-ink-500, rgb(156 163 175));
+}
+
+/* A two-column form row that collapses on a narrow screen. */
+.scpp-form-grid {
+    display: grid;
+    gap: 1rem;
+    grid-template-columns: 2fr 1fr;
+}
+
+@media (max-width: 640px) {
+    .scpp-form-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+.scpp-label {
+    display: flex;
+    align-items: center;
+    gap: 0.375rem;
+    font-size: 0.875rem;
+    font-weight: 500;
+    margin-bottom: 0.375rem;
+}
+
+/* The "?" hint and its tooltip.
+   Was a second `@once` block, in the hint component. */
+.scpp-hint {
+    position: relative;
+    display: inline-flex;
+    vertical-align: middle;
+}
+
+.scpp-hint__icon {
+    width: 1rem;
+    height: 1rem;
+    border-radius: 9999px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.7rem;
+    font-weight: 700;
+    line-height: 1;
+    color: rgb(107 114 128);
+    border: 1px solid currentColor;
+    cursor: help;
+    transition: color 0.15s var(--sc-ease-out-soft, ease);
+}
+
+/* The hover colour was a hard-coded blue, which was the one thing on the page
+   that ignored the user's chosen accent. */
+.scpp-hint:hover .scpp-hint__icon,
+.scpp-hint:focus-visible .scpp-hint__icon {
+    color: var(--sc-accent, rgb(59 130 246));
+}
+
+.scpp-hint__bubble {
+    position: absolute;
+    left: 50%;
+    top: calc(100% + 0.5rem);
+    transform: translateX(-50%);
+    z-index: 50;
+    width: 16rem;
+    border-radius: 0.5rem;
+    padding: 0.5rem 0.75rem;
+    background: var(--sc-base-800, rgb(17 24 39));
+    color: var(--sc-ink-100, #fff);
+    font-size: 0.75rem;
+    font-weight: 400;
+    line-height: 1.5;
+    text-align: left;
+    white-space: normal;
+    box-shadow: 0 10px 20px rgb(0 0 0 / 0.25);
+    /* Hidden outright, not merely transparent: a see-through tooltip still
+       takes part in layout and can be read by a screen reader twice. */
+    visibility: hidden;
+    opacity: 0;
+    transition: opacity 0.15s ease, visibility 0.15s ease;
+    pointer-events: none;
+}
+
+.scpp-hint:hover .scpp-hint__bubble,
+.scpp-hint:focus-visible .scpp-hint__bubble {
+    visibility: visible;
+    opacity: 1;
+}

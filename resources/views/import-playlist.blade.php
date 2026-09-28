@@ -5,7 +5,6 @@
 <x-filament-panels::page>
     @php($import = $this->currentImport())
 
-    <x-playlist-porter::styles />
 
     {{-- Services, as a grid of cards. Setup and the redirect URI live in a
          modal now: they were three stacked panels of forms and explanation on
