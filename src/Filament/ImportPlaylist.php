@@ -549,14 +549,34 @@ class ImportPlaylist extends Page
     /** Whether the resolve panel is open. */
     public bool $resolving = false;
 
+    /**
+     * Open the resolve panel.
+     *
+     * Setting the flag renders the modal's markup; it does not show it. A
+     * Filament modal is `x-show="isOpen"`, and `isOpen` turns true only on an
+     * `open-modal` window event carrying its id:
+     *
+     *     x-on:open-modal.window="if ($event.detail.id === @js($id) && ! isOpen) open()"
+     *
+     * The `:visible` prop is not that switch -- it only adds a `fi-hidden`
+     * class. So without the dispatch the panel was in the DOM and invisible,
+     * and the button looked dead.
+     */
     public function openResolve(): void
     {
         $this->resolving = true;
+
+        $this->dispatch('open-modal', id: 'scpp-resolve');
     }
 
     public function closeResolve(): void
     {
         $this->resolving = false;
+
+        // Told to close as well as un-rendered: a modal dismissed by its own
+        // close button has already gone, but one closed from the server (after
+        // saving, say) has not, and Alpine keeps `isOpen` true until it hears.
+        $this->dispatch('close-modal', id: 'scpp-resolve');
     }
 
     // MARK: - Setup, in a modal rather than inline (S-347)
@@ -568,16 +588,21 @@ class ImportPlaylist extends Page
 
     public string $setupClientSecret = '';
 
+    /** Open the setup panel. See openResolve() for why the dispatch matters. */
     public function openSetup(string $key): void
     {
         $this->settingUp = $key;
         $this->setupClientId = '';
         $this->setupClientSecret = '';
+
+        $this->dispatch('open-modal', id: 'scpp-setup');
     }
 
     public function closeSetup(): void
     {
         $this->settingUp = null;
+
+        $this->dispatch('close-modal', id: 'scpp-setup');
     }
 
     /** The redirect URI for the source currently being set up. */
@@ -627,6 +652,8 @@ class ImportPlaylist extends Page
         $this->setupClientId = '';
         $this->setupClientSecret = '';
         $this->settingUp = null;
+
+        $this->dispatch('close-modal', id: 'scpp-setup');
 
         Notification::make()
             ->title($name.' is set up')

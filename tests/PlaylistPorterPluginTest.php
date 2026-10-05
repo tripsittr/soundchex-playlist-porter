@@ -48,6 +48,53 @@ class PlaylistPorterPluginTest extends TestCase
         $this->assertContains(ImportPlaylist::class, app(Registry::class)->adminPageClasses());
     }
 
+    /**
+     * Opening a panel has to tell the modal to open, not just render it.
+     *
+     * A Filament modal is `x-show=\"isOpen\"`, and `isOpen` turns true only when
+     * an `open-modal` window event arrives carrying its id. The `:visible` prop
+     * is not that switch -- it only adds a `fi-hidden` class. Setting the flag
+     * alone put the panel in the DOM and left it invisible, so Setup looked
+     * dead: clicking it did nothing a person could see.
+     */
+    public function test_opening_setup_tells_the_modal_to_open(): void
+    {
+        Livewire::test(ImportPlaylist::class)
+            ->call(openSetup, spotify)
+            ->assertSet(settingUp, spotify)
+            ->assertDispatched(open-modal, id: scpp-setup);
+    }
+
+    public function test_closing_setup_tells_the_modal_to_close(): void
+    {
+        Livewire::test(ImportPlaylist::class)
+            ->call(openSetup, spotify)
+            ->call(closeSetup)
+            ->assertSet(settingUp, null)
+            ->assertDispatched(close-modal, id: scpp-setup);
+    }
+
+    public function test_opening_the_resolve_panel_tells_its_modal_to_open(): void
+    {
+        Livewire::test(ImportPlaylist::class)
+            ->call(openResolve)
+            ->assertSet(resolving, true)
+            ->assertDispatched(open-modal, id: scpp-resolve);
+    }
+
+    /** Saving credentials closes the panel it was typed into. */
+    public function test_saving_setup_closes_the_panel(): void
+    {
+        Livewire::test(ImportPlaylist::class)
+            ->call(openSetup, spotify)
+            ->set(setupClientId, a-client-id)
+            ->set(setupClientSecret, a-client-secret)
+            ->call(saveSetup)
+            ->assertSet(settingUp, null)
+            ->assertDispatched(close-modal, id: scpp-setup);
+
+        $this->assertSame(a-client-id, app(\App\Services\SettingsService::class)->get(spotify.client_id));
+    }
     public function test_a_capped_profile_cannot_reach_the_page(): void
     {
         $kid = Profile::create([
